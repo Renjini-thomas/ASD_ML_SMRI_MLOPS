@@ -1,0 +1,8 @@
+[core]
+    remote = origin
+    autostage = true
+['remote "origin"']
+    url = https://dagshub.com/renjini2539thomas/ASD_ML_SMRI_MLOPS.dvc
+    auth = basic
+    user = renjini2539thomas
+    password = 96e6ecc0aab987c15f47401ac087412ce5da0029

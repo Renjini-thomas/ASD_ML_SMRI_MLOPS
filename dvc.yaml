@@ -1,0 +1,8 @@
+stages:
+  data_ingestion:
+    cmd: python -m src.pipeline.data_ingestion_pipeline
+    deps:
+      - src/components/data_ingestion.py
+      - config.yaml
+    outs:
+      - artifacts/data_ingestion

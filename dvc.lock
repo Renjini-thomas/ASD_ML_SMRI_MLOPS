@@ -1,0 +1,19 @@
+schema: '2.0'
+stages:
+  data_ingestion:
+    cmd: python -m src.pipeline.data_ingestion_pipeline
+    deps:
+    - path: config.yaml
+      hash: md5
+      md5: c8a11c7a90a0b978e9e97e7e2449f559
+      size: 196
+    - path: src/components/data_ingestion.py
+      hash: md5
+      md5: 9f65510a6be5b5e9be723121fcee29e8
+      size: 3061
+    outs:
+    - path: artifacts/data_ingestion
+      hash: md5
+      md5: 156dd5fe9dfdf28e2eea588eef75a5f4.dir
+      size: 15741950432
+      nfiles: 286
