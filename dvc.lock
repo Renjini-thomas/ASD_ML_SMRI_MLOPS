@@ -39,3 +39,21 @@ stages:
       md5: 1076c9a6a518c540d879eca0fd6eee7b.dir
       size: 35919454
       nfiles: 2566
+  feature_extraction:
+    cmd: python -m src.pipeline.feature_extraction_pipeline
+    deps:
+    - path: artifacts/preprocessing
+      hash: md5
+      md5: 1076c9a6a518c540d879eca0fd6eee7b.dir
+      size: 35919454
+      nfiles: 2566
+    - path: src/components/feature_extraction.py
+      hash: md5
+      md5: ca3060dd0c28ae5dcc1da731c8457bfc
+      size: 2870
+    outs:
+    - path: artifacts/features
+      hash: md5
+      md5: d34a5f913ad21b4314c3f18df02fcb01.dir
+      size: 3408568
+      nfiles: 3

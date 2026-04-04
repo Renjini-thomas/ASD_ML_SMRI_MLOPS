@@ -16,3 +16,11 @@ stages:
       - artifacts/data_ingestion
     outs:
       - artifacts/preprocessing
+    
+  feature_extraction:
+    cmd: python -m src.pipeline.feature_extraction_pipeline
+    deps:
+      - src/components/feature_extraction.py
+      - artifacts/preprocessing
+    outs:
+      - artifacts/features

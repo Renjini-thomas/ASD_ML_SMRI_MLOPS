@@ -10,3 +10,6 @@ torchvision
 nibabel
 nilearn
 opencv-python
+python-dotenv
+scikit-image
+joblib
