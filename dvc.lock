@@ -5,8 +5,8 @@ stages:
     deps:
     - path: config.yaml
       hash: md5
-      md5: c8a11c7a90a0b978e9e97e7e2449f559
-      size: 196
+      md5: 8d94e55a38b5d70017641c0504d6e437
+      size: 444
     - path: src/components/data_ingestion.py
       hash: md5
       md5: 9f65510a6be5b5e9be723121fcee29e8
@@ -17,3 +17,25 @@ stages:
       md5: 156dd5fe9dfdf28e2eea588eef75a5f4.dir
       size: 15741950432
       nfiles: 286
+  preprocessing:
+    cmd: python -m src.pipeline.preprocessing_pipeline
+    deps:
+    - path: artifacts/data_ingestion
+      hash: md5
+      md5: 156dd5fe9dfdf28e2eea588eef75a5f4.dir
+      size: 15741950432
+      nfiles: 286
+    - path: config.yaml
+      hash: md5
+      md5: 8d94e55a38b5d70017641c0504d6e437
+      size: 444
+    - path: src/components/preprocessing.py
+      hash: md5
+      md5: 8f110128fee2cad4be0b7d485e0ff4d4
+      size: 8213
+    outs:
+    - path: artifacts/preprocessing
+      hash: md5
+      md5: 1076c9a6a518c540d879eca0fd6eee7b.dir
+      size: 35919454
+      nfiles: 2566

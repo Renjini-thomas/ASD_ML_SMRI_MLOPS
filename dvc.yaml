@@ -4,5 +4,15 @@ stages:
     deps:
       - src/components/data_ingestion.py
       - config.yaml
-    outs:
+    # outs:
+    #   - artifacts/data_ingestion
+      
+
+  preprocessing:
+    cmd: python -m src.pipeline.preprocessing_pipeline
+    deps:
+      - src/components/preprocessing.py
+      - config.yaml
       - artifacts/data_ingestion
+    outs:
+      - artifacts/preprocessing

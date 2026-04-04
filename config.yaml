@@ -4,3 +4,12 @@ data_ingestion:
   root_dir: artifacts/data_ingestion
   source_dir: "D:/main_project/Kaggle data/ASD_DATASET"
   local_data_file: artifacts/data_ingestion/ASD_DATASET
+
+preprocessing:
+  root_dir: artifacts/preprocessing
+  input_dir: artifacts/data_ingestion/ASD_DATASET
+  train_dir: artifacts/preprocessing/train
+  test_dir: artifacts/preprocessing/test
+  test_size: 0.2
+  random_state: 42
+  num_slices: 11

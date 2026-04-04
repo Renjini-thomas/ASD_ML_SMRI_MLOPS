@@ -7,3 +7,6 @@ matplotlib
 seaborn
 torch
 torchvision
+nibabel
+nilearn
+opencv-python
