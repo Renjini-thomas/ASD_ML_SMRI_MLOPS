@@ -81,13 +81,33 @@ class ModelEvaluator:
 
         run_id = self.get_best_run()
 
-        model_uri = f"runs:/{run_id}/model"
-        print(f"📦 Loading model from: {model_uri}")
+        import joblib
+        import os
+        from mlflow.tracking import MlflowClient
 
-        try:
-            model = mlflow.sklearn.load_model(model_uri)
-        except Exception as e:
-            raise Exception(f"❌ Model not found at {model_uri}")
+        client = MlflowClient()
+
+        # Download model artifact
+        local_dir = client.download_artifacts(run_id, "model")
+
+        print(f"📦 Model downloaded to: {local_dir}")
+
+        # Find .pkl file
+        model_file = None
+        for f in os.listdir(local_dir):
+            if f.endswith(".pkl"):
+                model_file = f
+                break
+
+        if model_file is None:
+            raise Exception("❌ No model file found")
+
+        model_path = os.path.join(local_dir, model_file)
+
+        # Load model
+        model = joblib.load(model_path)
+
+        print(f"✅ Model loaded: {model_path}")
 
         return X_test, y_test, model, run_id
 
@@ -123,12 +143,43 @@ class ModelEvaluator:
             # ---------------- CONFUSION MATRIX ----------------
             cm = confusion_matrix(y_test, y_pred)
 
-            plt.figure(figsize=(6, 5))
-            sns.heatmap(cm, annot=True, fmt="d")
-            plt.title("Confusion Matrix")
+            import seaborn as sns
+            import matplotlib.pyplot as plt
+            import numpy as np
+
+            # Better style
+            sns.set(style="whitegrid", font_scale=1.2)
+
+            plt.figure(figsize=(7, 6))
+
+            # Optional: add percentages
+            cm_percent = cm / cm.sum(axis=1, keepdims=True)
+
+            labels = np.array([
+                [f"{cm[i,j]}\n({cm_percent[i,j]*100:.1f}%)" for j in range(cm.shape[1])]
+                for i in range(cm.shape[0])
+            ])
+
+            sns.heatmap(
+                cm,
+                annot=labels,
+                fmt="",
+                cmap="YlGnBu",  # 🔥 clean professional color
+                cbar=True,
+                xticklabels=["Non-ASD", "ASD"],
+                yticklabels=["Non-ASD", "ASD"],
+                linewidths=0.5,
+                linecolor="gray"
+            )
+
+            plt.title("Confusion Matrix", fontsize=16, fontweight="bold")
+            plt.xlabel("Predicted Label", fontsize=12)
+            plt.ylabel("Actual Label", fontsize=12)
+
+            plt.tight_layout()
 
             cm_path = self.eval_dir / "confusion_matrix.png"
-            plt.savefig(cm_path)
+            plt.savefig(cm_path, dpi=300)
             plt.close()
 
             mlflow.log_artifact(str(cm_path))
@@ -155,22 +206,26 @@ class ModelEvaluator:
             print("✅ Evaluation metrics & artifacts logged")
 
             # ---------------- STAGING MODEL CHECK ----------------
+            # ---------------- GET PREVIOUS STAGING ----------------
+            exp = client.get_experiment_by_name("model_training_experiment")
+
+            staging_run_id = exp.tags.get("staging_run_id")
+
             staging_score = 0.0
 
-            try:
-                staging_model = client.get_model_version_by_alias(
-                    name=self.model_name,
-                    alias="staging"
+            if staging_run_id:
+                print(f"📊 Previous staging run: {staging_run_id}")
+
+                # Get its metrics
+                runs = client.search_runs(
+                    experiment_ids=[exp.experiment_id],
+                    filter_string=f"run_id = '{staging_run_id}'"
                 )
 
-                staging_score = float(
-                    staging_model.tags.get("eval_balanced_accuracy", 0)
-                )
+                if runs:
+                    staging_score = runs[0].data.metrics.get("eval_balanced_accuracy", 0)
 
-                print(f"📊 Current staging score: {staging_score}")
-
-            except Exception:
-                print("⚠️ No staging model found (first run)")
+            print(f"📊 Current staging score: {staging_score}")
 
             # ---------------- PROMOTION LOGIC ----------------
             current_score = metrics["eval_balanced_accuracy"]
@@ -179,28 +234,23 @@ class ModelEvaluator:
 
                 print("🚀 Promoting new model to staging")
 
-                result = mlflow.register_model(
-                    model_uri=f"runs:/{run_id}/model",
-                    name=self.model_name
+                # 🔥 Register model using MLflow format
+                result = mlflow.sklearn.log_model(
+                    sk_model=model,
+                    artifact_path="model",
+                    registered_model_name=self.model_name
                 )
 
-                # Tag performance
-                client.set_model_version_tag(
-                    name=self.model_name,
-                    version=result.version,
-                    key="eval_balanced_accuracy",
-                    value=str(round(current_score, 6))
-                )
+                version = result.registered_model_version
 
-                # Set alias
+                # 🔥 Set staging alias
                 client.set_registered_model_alias(
                     name=self.model_name,
                     alias="staging",
-                    version=result.version
+                    version=version
                 )
 
-                print(f"✅ Promoted (score={current_score:.4f})")
+                print(f"✅ Registered & promoted version {version}")
 
             else:
                 print(f"❌ Not promoted ({current_score:.4f} <= {staging_score:.4f})")
-

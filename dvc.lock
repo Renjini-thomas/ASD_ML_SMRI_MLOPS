@@ -73,9 +73,24 @@ stages:
       nfiles: 3
     - path: src/components/model_training.py
       hash: md5
-      md5: dfde2538dc5d353fb990c5d8db615a4b
-      size: 7357
+      md5: ac91978152918f8922a699db698017ba
+      size: 8019
     - path: src/pipeline/model_training_pipeline.py
       hash: md5
       md5: f9e9b8bc0b1049f75a1e35ec7e610182
       size: 629
+  model_evaluation:
+    cmd: python -m src.pipeline.model_evaluation_pipeline
+    deps:
+    - path: artifacts/features/test_features.csv
+      hash: md5
+      md5: a869ea9122d15a716f70fd5605d7fc6d
+      size: 78945
+    - path: src/components/model_evaluation.py
+      hash: md5
+      md5: 8bff0dfa084efe183b2577b575b6587a
+      size: 8331
+    - path: src/pipeline/model_evaluation_pipeline.py
+      hash: md5
+      md5: 5b0a1b221e7851588fdcd93381ead581
+      size: 595

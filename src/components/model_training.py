@@ -183,7 +183,22 @@ class ModelTrainer:
 
                 # ---------------- LOG MODEL ----------------
                 best_model = grid.best_estimator_
-                mlflow.sklearn.log_model(best_model, artifact_path="model")
+                # print("before log model")
+                # mlflow.sklearn.log_model(best_model, artifact_path="model")
+                # print("after log model")
+                import joblib
+
+# ---------------- SAVE MODEL LOCALLY ----------------
+                model_path = self.temp_dir / f"{name}_model.pkl"
+                joblib.dump(best_model, model_path)
+
+                print(f"✅ Model saved locally: {model_path}")
+
+                # ---------------- LOG AS ARTIFACT ----------------
+                mlflow.log_artifact(str(model_path), artifact_path="model")
+
+                print("✅ Model logged as artifact")
+
 
                 print(f"✅ {name} → {metrics}")
 
