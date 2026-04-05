@@ -11,12 +11,10 @@ stages:
       hash: md5
       md5: 9f65510a6be5b5e9be723121fcee29e8
       size: 3061
-    outs:
-    - path: artifacts/data_ingestion
+    - path: src/pipeline/data_ingestion_pipeline.py
       hash: md5
-      md5: 156dd5fe9dfdf28e2eea588eef75a5f4.dir
-      size: 15741950432
-      nfiles: 286
+      md5: 902cb01023605b28a4c014141f7ecf97
+      size: 944
   preprocessing:
     cmd: python -m src.pipeline.preprocessing_pipeline
     deps:
@@ -33,6 +31,10 @@ stages:
       hash: md5
       md5: 8f110128fee2cad4be0b7d485e0ff4d4
       size: 8213
+    - path: src/pipeline/preprocessing_pipeline.py
+      hash: md5
+      md5: 3d9b6537f2c04730d5d62a1687785bd4
+      size: 699
     outs:
     - path: artifacts/preprocessing
       hash: md5
@@ -51,9 +53,29 @@ stages:
       hash: md5
       md5: ca3060dd0c28ae5dcc1da731c8457bfc
       size: 2870
+    - path: src/pipeline/feature_extraction_pipeline.py
+      hash: md5
+      md5: e274a78b36491231eda2a810cdf9f1b5
+      size: 2831
     outs:
     - path: artifacts/features
       hash: md5
       md5: d34a5f913ad21b4314c3f18df02fcb01.dir
       size: 3408568
       nfiles: 3
+  model_training:
+    cmd: python -m src.pipeline.model_training_pipeline
+    deps:
+    - path: artifacts/features
+      hash: md5
+      md5: d34a5f913ad21b4314c3f18df02fcb01.dir
+      size: 3408568
+      nfiles: 3
+    - path: src/components/model_training.py
+      hash: md5
+      md5: dfde2538dc5d353fb990c5d8db615a4b
+      size: 7357
+    - path: src/pipeline/model_training_pipeline.py
+      hash: md5
+      md5: f9e9b8bc0b1049f75a1e35ec7e610182
+      size: 629

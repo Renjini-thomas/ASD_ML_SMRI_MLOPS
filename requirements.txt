@@ -13,3 +13,5 @@ opencv-python
 python-dotenv
 scikit-image
 joblib
+boto3
+s3fs

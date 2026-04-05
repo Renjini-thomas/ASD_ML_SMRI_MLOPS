@@ -1,4 +1,6 @@
+
 import os
+import sys
 import hashlib
 import pandas as pd
 import mlflow
@@ -28,6 +30,10 @@ class ModelTrainer:
 
         os.environ["MLFLOW_TRACKING_USERNAME"] = os.getenv("DAGSHUB_USERNAME")
         os.environ["MLFLOW_TRACKING_PASSWORD"] = os.getenv("DAGSHUB_TOKEN")
+        os.environ["AWS_ACCESS_KEY_ID"] = os.getenv("DAGSHUB_USERNAME")
+        os.environ["AWS_SECRET_ACCESS_KEY"] = os.getenv("DAGSHUB_TOKEN")
+        os.environ["MLFLOW_S3_ENDPOINT_URL"] = f"https://dagshub.com"
+        
 
         mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
         mlflow.set_experiment("model_training_experiment")
@@ -64,7 +70,7 @@ class ModelTrainer:
                 ]),
                 {
                     "scaler": [StandardScaler(), RobustScaler(), MinMaxScaler(), PowerTransformer()],
-                    "pca__n_components": [100, 200, 300],
+                    "pca__n_components": [50, 100, 150, 200],
                     "model__C": [0.01, 0.1, 1, 10]
                 }
             ),
@@ -75,7 +81,7 @@ class ModelTrainer:
                     ("model", RandomForestClassifier(class_weight="balanced", random_state=42))
                 ]),
                 {
-                    "pca__n_components": [100, 200, 300],
+                    "pca__n_components": [50, 100, 150, 200],
                     "model__n_estimators": [200, 400],
                     "model__max_depth": [5, 10, 15]
                 }
@@ -89,7 +95,8 @@ class ModelTrainer:
                 ]),
                 {
                     "scaler": [StandardScaler(), RobustScaler(), MinMaxScaler()],
-                    "pca__n_components": [100, 200, 300],
+                    "model__kernel": ["rbf", "linear"],
+                    "pca__n_components": [50, 100, 150, 200],
                     "model__C": [0.5, 1, 5]
                 }
             ),
@@ -102,8 +109,8 @@ class ModelTrainer:
                 ]),
                 {
                     "scaler": [StandardScaler(), MinMaxScaler()],
-                    "pca__n_components": [100, 200, 300],
-                    "model__n_neighbors": [5, 7, 9]
+                    "pca__n_components": [50, 100, 150, 200],
+                    "model__n_neighbors": [5, 7, 9, 11]
                 }
             )
         }
@@ -135,7 +142,7 @@ class ModelTrainer:
 
             with mlflow.start_run(run_name=name) as run:
 
-                print(f"Training {name}")
+                print(f"🚀 Training {name}")
 
                 grid = GridSearchCV(
                     pipe,
@@ -159,31 +166,43 @@ class ModelTrainer:
                     "cv_accuracy": grid.cv_results_["mean_test_accuracy"][idx]
                 }
 
-                # ✅ LOG PARAMS
+                # ---------------- LOG PARAMS ----------------
                 mlflow.log_param("candidate_model", name)
                 mlflow.log_param("data_version", data_hash)
                 mlflow.log_params(grid.best_params_)
 
-                # ✅ LOG METRICS
+                # ---------------- LOG METRICS ----------------
                 for k, v in metrics.items():
                     mlflow.log_metric(k, v)
 
-                # ✅ LOG CV RESULTS
+                # ---------------- LOG CV RESULTS ----------------
                 cv_df = pd.DataFrame(grid.cv_results_)
                 cv_path = self.temp_dir / f"{name}_cv_results.csv"
                 cv_df.to_csv(cv_path, index=False)
                 mlflow.log_artifact(str(cv_path))
 
-                # 🔥 LOG MODEL ONLY IN MLFLOW
+                # ---------------- LOG MODEL ----------------
                 best_model = grid.best_estimator_
                 mlflow.sklearn.log_model(best_model, artifact_path="model")
 
-                # Track best model
+                print(f"✅ {name} → {metrics}")
+
+                # ---------------- TRACK BEST ----------------
                 if metrics["cv_balanced_accuracy"] > best_global_score:
                     best_global_score = metrics["cv_balanced_accuracy"]
                     best_run_id = run.info.run_id
                     best_model_name = name
 
-                print(f"{name} → {metrics}")
+        # ---------------- GLOBAL BEST RUN ----------------
+        with mlflow.start_run(run_name="best_model_summary"):
+
+            mlflow.log_param("best_run_id", best_run_id)
+            mlflow.log_param("best_model", best_model_name)
+            mlflow.log_metric("best_balanced_accuracy", best_global_score)
+
+        print("\n🏆 FINAL BEST MODEL")
+        print(f"Model: {best_model_name}")
+        print(f"Run ID: {best_run_id}")
+        print(f"Score: {best_global_score}")
 
         return best_run_id, best_model_name, best_global_score

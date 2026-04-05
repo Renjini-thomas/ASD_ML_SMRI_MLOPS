@@ -22,7 +22,7 @@ stages:
   feature_extraction:
     cmd: python -m src.pipeline.feature_extraction_pipeline
     deps:
-      - src/components/feature_extraction_pipeline.py
+      - src/pipeline/feature_extraction_pipeline.py
       - src/components/feature_extraction.py
       - artifacts/preprocessing
     outs:
@@ -34,4 +34,12 @@ stages:
       - src/pipeline/model_training_pipeline.py
       - src/components/model_training.py
       - artifacts/features
+  
+  model_evaluation:
+    cmd: python -m src.pipeline.model_evaluation_pipeline
+    deps:
+      - src/pipeline/model_evaluation_pipeline.py
+      - src/components/model_evaluation.py
+      - artifacts/features/test_features.csv
+    
     
