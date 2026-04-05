@@ -77,11 +77,11 @@ class ModelTrainer:
 
             "random_forest": (
                 Pipeline([
-                    ("pca", PCA()),
+                    # ("pca", PCA()),
                     ("model", RandomForestClassifier(class_weight="balanced", random_state=42))
                 ]),
                 {
-                    "pca__n_components": [50, 100, 150, 200],
+                    # "pca__n_components": [50, 100, 150, 200],
                     "model__n_estimators": [200, 400],
                     "model__max_depth": [5, 10, 15]
                 }

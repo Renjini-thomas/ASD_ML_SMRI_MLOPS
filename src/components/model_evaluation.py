@@ -207,43 +207,48 @@ class ModelEvaluator:
 
             # ---------------- STAGING MODEL CHECK ----------------
             # ---------------- GET PREVIOUS STAGING ----------------
-            exp = client.get_experiment_by_name("model_training_experiment")
-
-            staging_run_id = exp.tags.get("staging_run_id")
-
+            # ---------------- STAGING MODEL CHECK ----------------
             staging_score = 0.0
 
-            if staging_run_id:
-                print(f"📊 Previous staging run: {staging_run_id}")
-
-                # Get its metrics
-                runs = client.search_runs(
-                    experiment_ids=[exp.experiment_id],
-                    filter_string=f"run_id = '{staging_run_id}'"
+            try:
+                model_version = client.get_model_version_by_alias(
+                    name=self.model_name,
+                    alias="staging"
                 )
 
-                if runs:
-                    staging_score = runs[0].data.metrics.get("eval_balanced_accuracy", 0)
+                print(f"📊 Previous staging version: {model_version.version}")
+
+                staging_run_id = model_version.run_id
+                run = client.get_run(staging_run_id)
+
+                print("📊 Staging run metrics:", run.data.metrics)
+
+                staging_score = run.data.metrics.get(
+                    "eval_balanced_accuracy",
+                    run.data.metrics.get("balanced_accuracy", 0.0)
+                )
+
+            except Exception:
+                print("⚠️ No staging model found yet (first run)")
 
             print(f"📊 Current staging score: {staging_score}")
 
-            # ---------------- PROMOTION LOGIC ----------------
+
+            # ---------------- PROMOTION ----------------
             current_score = metrics["eval_balanced_accuracy"]
 
             if current_score > staging_score:
 
                 print("🚀 Promoting new model to staging")
 
-                # 🔥 Register model using MLflow format
                 result = mlflow.sklearn.log_model(
                     sk_model=model,
-                    artifact_path="model",
+                    name="model",
                     registered_model_name=self.model_name
                 )
 
                 version = result.registered_model_version
 
-                # 🔥 Set staging alias
                 client.set_registered_model_alias(
                     name=self.model_name,
                     alias="staging",

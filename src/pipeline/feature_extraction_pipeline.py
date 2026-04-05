@@ -36,6 +36,7 @@ class FeatureExtractionPipeline:
                 mlflow.log_param("lbp_radius", 1)
                 mlflow.log_param("glcm_features", 7)
                 mlflow.log_param("lbp_features", 256)
+                mlflow.log_param("gfcc_features",6)
 
                 # ================= TRAIN =================
                 logger.info("Extracting features from training data...")
