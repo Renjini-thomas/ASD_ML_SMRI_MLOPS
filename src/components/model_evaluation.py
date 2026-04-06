@@ -1,26 +1,330 @@
 
+# import os
+# import pandas as pd
+# import mlflow
+# import mlflow.sklearn
+# import matplotlib.pyplot as plt
+# import seaborn as sns
+
+# from pathlib import Path
+# from dotenv import load_dotenv
+# from mlflow.tracking import MlflowClient
+
+# from sklearn.metrics import (
+#     recall_score,
+#     f1_score,
+#     accuracy_score,
+#     roc_auc_score,
+#     confusion_matrix,
+#     classification_report,
+#     RocCurveDisplay,
+#     balanced_accuracy_score,
+#     precision_score
+# )
+
+
+# class ModelEvaluator:
+
+#     def __init__(self):
+
+#         load_dotenv()
+
+#         os.environ["MLFLOW_TRACKING_USERNAME"] = os.getenv("DAGSHUB_USERNAME")
+#         os.environ["MLFLOW_TRACKING_PASSWORD"] = os.getenv("DAGSHUB_TOKEN")
+#         os.environ["AWS_ACCESS_KEY_ID"] = os.getenv("DAGSHUB_USERNAME")
+#         os.environ["AWS_SECRET_ACCESS_KEY"] = os.getenv("DAGSHUB_TOKEN")
+#         os.environ["MLFLOW_S3_ENDPOINT_URL"] = f"https://dagshub.com"
+
+#         mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
+#         mlflow.set_experiment("model_training_experiment")
+
+#         self.feature_dir = Path("artifacts/features")
+#         self.eval_dir = Path("artifacts/evaluation")
+#         self.eval_dir.mkdir(parents=True, exist_ok=True)
+
+#         self.model_name = "ASD_BEST_MODEL"
+
+#     # ---------------- GET BEST RUN ----------------
+#     def get_best_run(self):
+
+#         client = MlflowClient()
+#         exp = client.get_experiment_by_name("model_training_experiment")
+
+#         runs = client.search_runs(
+#             experiment_ids=[exp.experiment_id],
+#             filter_string="tags.mlflow.runName = 'best_model_summary'",
+#             order_by=["start_time DESC"],
+#             max_results=1
+#         )
+
+#         if len(runs) == 0:
+#             raise Exception("❌ No best_model_summary run found")
+
+#         summary_run = runs[0]
+
+#         best_run_id = summary_run.data.params.get("best_run_id")
+
+#         if best_run_id is None:
+#             raise Exception("❌ best_run_id not found in summary run")
+
+#         print("⭐ Best Training Run ID:", best_run_id)
+
+#         return best_run_id
+
+#     # ---------------- LOAD DATA + MODEL ----------------
+#     def load_data(self):
+
+#         test_df = pd.read_csv(self.feature_dir / "test_features.csv")
+
+#         X_test = test_df.drop("label", axis=1)
+#         y_test = test_df["label"]
+
+#         run_id = self.get_best_run()
+
+#         import joblib
+#         import os
+#         from mlflow.tracking import MlflowClient
+
+#         client = MlflowClient()
+
+#         # Download model artifact
+#         local_dir = client.download_artifacts(run_id, "model")
+
+#         print(f"📦 Model downloaded to: {local_dir}")
+
+#         # Find .pkl file
+#         model_file = None
+#         for f in os.listdir(local_dir):
+#             if f.endswith(".pkl"):
+#                 model_file = f
+#                 break
+
+#         if model_file is None:
+#             raise Exception("❌ No model file found")
+
+#         model_path = os.path.join(local_dir, model_file)
+
+#         # Load model
+#         model = joblib.load(model_path)
+
+#         print(f"✅ Model loaded: {model_path}")
+
+#         return X_test, y_test, model, run_id
+
+#     # ---------------- EVALUATION ----------------
+#     def evaluate(self):
+
+#         X_test, y_test, model, run_id = self.load_data()
+#         client = MlflowClient()
+
+#         with mlflow.start_run(run_name="evaluation_stage"):
+
+#             # ---------------- BASIC INFO ----------------
+#             mlflow.log_param("source_run_id", run_id)
+#             mlflow.log_param("model_type", model.named_steps["model"].__class__.__name__)
+
+#             # ---------------- PREDICTIONS ----------------
+#             y_pred = model.predict(X_test)
+#             y_prob = model.predict_proba(X_test)[:, 1]
+
+#             # ---------------- METRICS ----------------
+#             metrics = {
+#                 "eval_recall": recall_score(y_test, y_pred),
+#                 "eval_f1": f1_score(y_test, y_pred),
+#                 "eval_accuracy": accuracy_score(y_test, y_pred),
+#                 "eval_auc": roc_auc_score(y_test, y_prob),
+#                 "eval_balanced_accuracy": balanced_accuracy_score(y_test, y_pred),
+#                 "eval_precision": precision_score(y_test, y_pred),
+#             }
+
+#             for k, v in metrics.items():
+#                 mlflow.log_metric(k, v)
+
+#             # ---------------- CONFUSION MATRIX ----------------
+#             cm = confusion_matrix(y_test, y_pred)
+
+#             import seaborn as sns
+#             import matplotlib.pyplot as plt
+#             import numpy as np
+
+#             # Better style
+#             sns.set(style="whitegrid", font_scale=1.2)
+
+#             plt.figure(figsize=(7, 6))
+
+#             # Optional: add percentages
+#             cm_percent = cm / cm.sum(axis=1, keepdims=True)
+
+#             labels = np.array([
+#                 [f"{cm[i,j]}\n({cm_percent[i,j]*100:.1f}%)" for j in range(cm.shape[1])]
+#                 for i in range(cm.shape[0])
+#             ])
+
+#             sns.heatmap(
+#                 cm,
+#                 annot=labels,
+#                 fmt="",
+#                 cmap="YlGnBu",  # 🔥 clean professional color
+#                 cbar=True,
+#                 xticklabels=["Non-ASD", "ASD"],
+#                 yticklabels=["Non-ASD", "ASD"],
+#                 linewidths=0.5,
+#                 linecolor="gray"
+#             )
+
+#             plt.title("Confusion Matrix", fontsize=16, fontweight="bold")
+#             plt.xlabel("Predicted Label", fontsize=12)
+#             plt.ylabel("Actual Label", fontsize=12)
+
+#             plt.tight_layout()
+
+#             cm_path = self.eval_dir / "confusion_matrix.png"
+#             plt.savefig(cm_path, dpi=300)
+#             plt.close()
+
+#             mlflow.log_artifact(str(cm_path))
+
+#             # ---------------- ROC CURVE ----------------
+#             plt.figure()
+#             RocCurveDisplay.from_predictions(y_test, y_prob)
+
+#             roc_path = self.eval_dir / "roc_curve.png"
+#             plt.savefig(roc_path)
+#             plt.close()
+
+#             mlflow.log_artifact(str(roc_path))
+
+#             # ---------------- CLASSIFICATION REPORT ----------------
+#             report = classification_report(y_test, y_pred)
+
+#             report_path = self.eval_dir / "classification_report.txt"
+#             with open(report_path, "w") as f:
+#                 f.write(report)
+
+#             mlflow.log_artifact(str(report_path))
+
+#             print("✅ Evaluation metrics & artifacts logged")
+
+#             # ---------------- STAGING MODEL CHECK ----------------
+#             # ---------------- GET PREVIOUS STAGING ----------------
+#             # ---------------- STAGING MODEL CHECK ----------------
+#             staging_score = 0.0
+
+#             try:
+#                 model_version = client.get_model_version_by_alias(
+#                     name=self.model_name,
+#                     alias="staging"
+#                 )
+
+#                 print(f"📊 Previous staging version: {model_version.version}")
+
+#                 staging_run_id = model_version.run_id
+#                 run = client.get_run(staging_run_id)
+
+#                 print("📊 Staging run metrics:", run.data.metrics)
+
+#                 staging_score = run.data.metrics.get(
+#                     "eval_balanced_accuracy",
+#                     run.data.metrics.get("balanced_accuracy", 0.0)
+#                 )
+
+#             except Exception:
+#                 print("⚠️ No staging model found yet (first run)")
+
+#             print(f"📊 Current staging score: {staging_score}")
+
+
+#             # ---------------- PROMOTION ----------------
+#             current_score = metrics["eval_balanced_accuracy"]
+
+#             if current_score > staging_score:
+
+#                 print("🚀 Promoting new model to staging")
+
+#                 result = mlflow.sklearn.log_model(
+#                     sk_model=model,
+#                     name="model",
+#                     registered_model_name=self.model_name
+#                 )
+
+#                 version = result.registered_model_version
+
+#                 client.set_registered_model_alias(
+#                     name=self.model_name,
+#                     alias="staging",
+#                     version=version
+#                 )
+
+#                 print(f"✅ Registered & promoted version {version}")
+
+#             else:
+#                 print(f"❌ Not promoted ({current_score:.4f} <= {staging_score:.4f})")
 import os
 import pandas as pd
+import numpy as np
 import mlflow
 import mlflow.sklearn
 import matplotlib.pyplot as plt
 import seaborn as sns
+import joblib
 
 from pathlib import Path
 from dotenv import load_dotenv
 from mlflow.tracking import MlflowClient
 
 from sklearn.metrics import (
-    recall_score,
-    f1_score,
-    accuracy_score,
-    roc_auc_score,
-    confusion_matrix,
-    classification_report,
-    RocCurveDisplay,
-    balanced_accuracy_score,
-    precision_score
+    recall_score, f1_score, accuracy_score,
+    roc_auc_score, confusion_matrix,
+    classification_report, RocCurveDisplay,
+    balanced_accuracy_score, precision_score
 )
+
+
+# ============================================================
+# PROMOTION STRATEGY
+# ============================================================
+# Must use the SAME composite formula as model_training.py.
+# A model is promoted to staging only when:
+#   1. Its test composite score beats the current staging model
+#   2. It passes ALL minimum thresholds on the test set
+#      (same thresholds as training — consistent gate)
+#
+# Using test composite (not a single metric) for promotion
+# prevents a model with high recall but collapsed precision
+# from being promoted just because recall improved.
+# ============================================================
+
+COMPOSITE_WEIGHTS = {
+    "recall":            0.50,
+    "balanced_accuracy": 0.20,
+    "auc":               0.20,
+    "f1":                0.10,
+}
+
+MIN_THRESHOLDS = {
+    "recall":            0.72,
+    "balanced_accuracy": 0.70,
+    "auc":               0.75,
+    "f1":                0.60,
+}
+
+
+def compute_composite_score(metrics: dict, prefix: str = "eval") -> float:
+    """
+    Computes composite score from eval metrics.
+    Returns -1.0 if any threshold is not met.
+    prefix allows reuse for both eval_ and holdout_ metric dicts.
+    """
+    for key, threshold in MIN_THRESHOLDS.items():
+        value = metrics.get(f"{prefix}_{key}", 0.0)
+        if value < threshold:
+            print(f"  FAILED threshold: {prefix}_{key} = {value:.4f} < {threshold}")
+            return -1.0
+
+    return sum(
+        COMPOSITE_WEIGHTS[key] * metrics[f"{prefix}_{key}"]
+        for key in COMPOSITE_WEIGHTS
+    )
 
 
 class ModelEvaluator:
@@ -31,15 +335,15 @@ class ModelEvaluator:
 
         os.environ["MLFLOW_TRACKING_USERNAME"] = os.getenv("DAGSHUB_USERNAME")
         os.environ["MLFLOW_TRACKING_PASSWORD"] = os.getenv("DAGSHUB_TOKEN")
-        os.environ["AWS_ACCESS_KEY_ID"] = os.getenv("DAGSHUB_USERNAME")
-        os.environ["AWS_SECRET_ACCESS_KEY"] = os.getenv("DAGSHUB_TOKEN")
-        os.environ["MLFLOW_S3_ENDPOINT_URL"] = f"https://dagshub.com"
+        os.environ["AWS_ACCESS_KEY_ID"]         = os.getenv("DAGSHUB_USERNAME")
+        os.environ["AWS_SECRET_ACCESS_KEY"]     = os.getenv("DAGSHUB_TOKEN")
+        os.environ["MLFLOW_S3_ENDPOINT_URL"]    = "https://dagshub.com"
 
         mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
         mlflow.set_experiment("model_training_experiment")
 
         self.feature_dir = Path("artifacts/features")
-        self.eval_dir = Path("artifacts/evaluation")
+        self.eval_dir    = Path("artifacts/evaluation")
         self.eval_dir.mkdir(parents=True, exist_ok=True)
 
         self.model_name = "ASD_BEST_MODEL"
@@ -48,7 +352,7 @@ class ModelEvaluator:
     def get_best_run(self):
 
         client = MlflowClient()
-        exp = client.get_experiment_by_name("model_training_experiment")
+        exp    = client.get_experiment_by_name("model_training_experiment")
 
         runs = client.search_runs(
             experiment_ids=[exp.experiment_id],
@@ -57,196 +361,186 @@ class ModelEvaluator:
             max_results=1
         )
 
-        if len(runs) == 0:
-            raise Exception("❌ No best_model_summary run found")
+        if not runs:
+            raise Exception("No best_model_summary run found. Run training first.")
 
-        summary_run = runs[0]
+        best_run_id = runs[0].data.params.get("best_run_id")
 
-        best_run_id = summary_run.data.params.get("best_run_id")
+        if not best_run_id or best_run_id == "none":
+            raise Exception(
+                "best_run_id is 'none' — no model passed minimum thresholds "
+                "during training. Relax MIN_THRESHOLDS or check features."
+            )
 
-        if best_run_id is None:
-            raise Exception("❌ best_run_id not found in summary run")
-
-        print("⭐ Best Training Run ID:", best_run_id)
-
+        print(f"Best training run ID: {best_run_id}")
         return best_run_id
 
     # ---------------- LOAD DATA + MODEL ----------------
     def load_data(self):
 
+        # Load the held-out test set (original 58-sample set)
+        # This is the final independent check — never seen during training
         test_df = pd.read_csv(self.feature_dir / "test_features.csv")
+        X_test  = test_df.drop("label", axis=1).values
+        y_test  = test_df["label"].values
 
-        X_test = test_df.drop("label", axis=1)
-        y_test = test_df["label"]
+        print(f"Test size        : {len(y_test)}")
+        print(f"Test distribution: {dict(zip(*np.unique(y_test, return_counts=True)))}")
 
         run_id = self.get_best_run()
-
-        import joblib
-        import os
-        from mlflow.tracking import MlflowClient
-
         client = MlflowClient()
 
-        # Download model artifact
-        local_dir = client.download_artifacts(run_id, "model")
-
-        print(f"📦 Model downloaded to: {local_dir}")
-
-        # Find .pkl file
-        model_file = None
-        for f in os.listdir(local_dir):
-            if f.endswith(".pkl"):
-                model_file = f
-                break
+        # Download model artifact from DagsHub
+        local_dir  = client.download_artifacts(run_id, "model")
+        model_file = next(
+            (f for f in os.listdir(local_dir) if f.endswith(".pkl")),
+            None
+        )
 
         if model_file is None:
-            raise Exception("❌ No model file found")
+            raise Exception(f"No .pkl file found in artifact dir: {local_dir}")
 
-        model_path = os.path.join(local_dir, model_file)
+        model = joblib.load(os.path.join(local_dir, model_file))
+        print(f"Model loaded: {model_file}")
 
-        # Load model
-        model = joblib.load(model_path)
+        # Also retrieve holdout composite from training run
+        # so we can compare training holdout vs test performance
+        training_run    = client.get_run(run_id)
+        holdout_composite = training_run.data.metrics.get(
+            "holdout_composite_score", None
+        )
 
-        print(f"✅ Model loaded: {model_path}")
-
-        return X_test, y_test, model, run_id
+        return X_test, y_test, model, run_id, holdout_composite
 
     # ---------------- EVALUATION ----------------
     def evaluate(self):
 
-        X_test, y_test, model, run_id = self.load_data()
+        X_test, y_test, model, run_id, holdout_composite = self.load_data()
         client = MlflowClient()
 
-        with mlflow.start_run(run_name="evaluation_stage"):
+        with mlflow.start_run(run_name="evaluation_stage") as eval_run:
 
             # ---------------- BASIC INFO ----------------
             mlflow.log_param("source_run_id", run_id)
-            mlflow.log_param("model_type", model.named_steps["model"].__class__.__name__)
+            mlflow.log_param(
+                "model_type",
+                model.named_steps["model"].__class__.__name__
+            )
 
             # ---------------- PREDICTIONS ----------------
             y_pred = model.predict(X_test)
             y_prob = model.predict_proba(X_test)[:, 1]
 
-            # ---------------- METRICS ----------------
-            metrics = {
-                "eval_recall": recall_score(y_test, y_pred),
-                "eval_f1": f1_score(y_test, y_pred),
-                "eval_accuracy": accuracy_score(y_test, y_pred),
-                "eval_auc": roc_auc_score(y_test, y_prob),
+            # ---------------- TEST METRICS ----------------
+            # pos_label=1 is explicit — autistic class is positive
+            eval_metrics = {
+                "eval_accuracy":          accuracy_score(y_test, y_pred),
                 "eval_balanced_accuracy": balanced_accuracy_score(y_test, y_pred),
-                "eval_precision": precision_score(y_test, y_pred),
+                "eval_auc":               roc_auc_score(y_test, y_prob),
+                "eval_f1":                f1_score(y_test, y_pred,       pos_label=1),
+                "eval_recall":            recall_score(y_test, y_pred,    pos_label=1),
+                "eval_precision":         precision_score(y_test, y_pred, pos_label=1),
             }
 
-            for k, v in metrics.items():
+            # ---------------- COMPOSITE ON TEST ----------------
+            test_composite = compute_composite_score(eval_metrics, prefix="eval")
+            eval_metrics["eval_composite_score"] = test_composite
+
+            # ---------------- HOLDOUT → TEST GAP ----------------
+            # Second overfitting check:
+            # holdout composite (training) vs test composite (evaluation)
+            # If this gap is large, model generalizes poorly to new data
+            if holdout_composite is not None:
+                gap2 = holdout_composite - test_composite
+                eval_metrics["holdout_test_gap"] = gap2
+                print(f"Holdout composite : {holdout_composite:.4f}")
+                print(f"Test composite    : {test_composite:.4f}")
+                print(f"Holdout→Test gap  : {gap2:.4f}  "
+                      f"{'[OVERFIT]' if gap2 > 0.10 else '[OK]'}")
+
+            for k, v in eval_metrics.items():
                 mlflow.log_metric(k, v)
 
+            print(f"\nTest metrics: {eval_metrics}")
+
             # ---------------- CONFUSION MATRIX ----------------
-            cm = confusion_matrix(y_test, y_pred)
-
-            import seaborn as sns
-            import matplotlib.pyplot as plt
-            import numpy as np
-
-            # Better style
-            sns.set(style="whitegrid", font_scale=1.2)
-
-            plt.figure(figsize=(7, 6))
-
-            # Optional: add percentages
+            cm         = confusion_matrix(y_test, y_pred)
             cm_percent = cm / cm.sum(axis=1, keepdims=True)
-
-            labels = np.array([
-                [f"{cm[i,j]}\n({cm_percent[i,j]*100:.1f}%)" for j in range(cm.shape[1])]
+            labels     = np.array([
+                [f"{cm[i,j]}\n({cm_percent[i,j]*100:.1f}%)"
+                 for j in range(cm.shape[1])]
                 for i in range(cm.shape[0])
             ])
 
+            plt.figure(figsize=(7, 6))
+            sns.set(style="whitegrid", font_scale=1.2)
             sns.heatmap(
-                cm,
-                annot=labels,
-                fmt="",
-                cmap="YlGnBu",  # 🔥 clean professional color
-                cbar=True,
+                cm, annot=labels, fmt="", cmap="YlGnBu",
                 xticklabels=["Non-ASD", "ASD"],
                 yticklabels=["Non-ASD", "ASD"],
-                linewidths=0.5,
-                linecolor="gray"
+                linewidths=0.5, linecolor="gray"
             )
-
-            plt.title("Confusion Matrix", fontsize=16, fontweight="bold")
+            plt.title("Confusion Matrix — Test Set", fontsize=16, fontweight="bold")
             plt.xlabel("Predicted Label", fontsize=12)
-            plt.ylabel("Actual Label", fontsize=12)
-
+            plt.ylabel("Actual Label",    fontsize=12)
             plt.tight_layout()
 
             cm_path = self.eval_dir / "confusion_matrix.png"
             plt.savefig(cm_path, dpi=300)
             plt.close()
-
             mlflow.log_artifact(str(cm_path))
 
             # ---------------- ROC CURVE ----------------
             plt.figure()
             RocCurveDisplay.from_predictions(y_test, y_prob)
-
+            plt.title("ROC Curve — Test Set")
             roc_path = self.eval_dir / "roc_curve.png"
             plt.savefig(roc_path)
             plt.close()
-
             mlflow.log_artifact(str(roc_path))
 
             # ---------------- CLASSIFICATION REPORT ----------------
-            report = classification_report(y_test, y_pred)
-
+            report      = classification_report(
+                y_test, y_pred,
+                target_names=["Non-ASD", "ASD"]
+            )
             report_path = self.eval_dir / "classification_report.txt"
             with open(report_path, "w") as f:
                 f.write(report)
-
             mlflow.log_artifact(str(report_path))
+            print(f"\nClassification Report:\n{report}")
 
-            print("✅ Evaluation metrics & artifacts logged")
-
-            # ---------------- STAGING MODEL CHECK ----------------
-            # ---------------- GET PREVIOUS STAGING ----------------
-            # ---------------- STAGING MODEL CHECK ----------------
-            staging_score = 0.0
+            # ---------------- STAGING COMPARISON ----------------
+            staging_composite = 0.0
 
             try:
                 model_version = client.get_model_version_by_alias(
                     name=self.model_name,
                     alias="staging"
                 )
-
-                print(f"📊 Previous staging version: {model_version.version}")
-
-                staging_run_id = model_version.run_id
-                run = client.get_run(staging_run_id)
-
-                print("📊 Staging run metrics:", run.data.metrics)
-
-                staging_score = run.data.metrics.get(
-                    "eval_balanced_accuracy",
-                    run.data.metrics.get("balanced_accuracy", 0.0)
+                staging_run    = client.get_run(model_version.run_id)
+                staging_composite = staging_run.data.metrics.get(
+                    "eval_composite_score", 0.0
                 )
+                print(f"\nCurrent staging composite : {staging_composite:.4f}")
+                print(f"New model composite       : {test_composite:.4f}")
 
             except Exception:
-                print("⚠️ No staging model found yet (first run)")
+                print("\nNo staging model found yet (first run).")
 
-            print(f"📊 Current staging score: {staging_score}")
+            # ---------------- PROMOTION GATE ----------------
+            # Promote only if:
+            #   1. Test composite beats current staging composite
+            #   2. Test composite is not -1.0 (passed all thresholds)
+            if test_composite > staging_composite and test_composite > 0:
 
+                print("Promoting new model to staging.")
 
-            # ---------------- PROMOTION ----------------
-            current_score = metrics["eval_balanced_accuracy"]
-
-            if current_score > staging_score:
-
-                print("🚀 Promoting new model to staging")
-
-                result = mlflow.sklearn.log_model(
+                result  = mlflow.sklearn.log_model(
                     sk_model=model,
                     name="model",
                     registered_model_name=self.model_name
                 )
-
                 version = result.registered_model_version
 
                 client.set_registered_model_alias(
@@ -254,8 +548,14 @@ class ModelEvaluator:
                     alias="staging",
                     version=version
                 )
-
-                print(f"✅ Registered & promoted version {version}")
+                print(f"Registered and promoted: version {version}")
 
             else:
-                print(f"❌ Not promoted ({current_score:.4f} <= {staging_score:.4f})")
+                reason = (
+                    "failed minimum thresholds"
+                    if test_composite <= 0
+                    else f"score {test_composite:.4f} <= staging {staging_composite:.4f}"
+                )
+                print(f"Not promoted: {reason}")
+
+            return eval_metrics

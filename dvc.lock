@@ -29,8 +29,8 @@ stages:
       size: 444
     - path: src/components/preprocessing.py
       hash: md5
-      md5: 8f110128fee2cad4be0b7d485e0ff4d4
-      size: 8213
+      md5: a9174599933523f1bc56d3d75fd0055d
+      size: 8731
     - path: src/pipeline/preprocessing_pipeline.py
       hash: md5
       md5: 3d9b6537f2c04730d5d62a1687785bd4
@@ -38,58 +38,67 @@ stages:
     outs:
     - path: artifacts/preprocessing
       hash: md5
-      md5: 1076c9a6a518c540d879eca0fd6eee7b.dir
-      size: 35919454
-      nfiles: 2566
+      md5: 30efae1f65ee057b3d094f46685abd85.dir
+      size: 38335372
+      nfiles: 2740
   feature_extraction:
     cmd: python -m src.pipeline.feature_extraction_pipeline
     deps:
     - path: artifacts/preprocessing
       hash: md5
-      md5: 1076c9a6a518c540d879eca0fd6eee7b.dir
-      size: 35919454
-      nfiles: 2566
+      md5: 30efae1f65ee057b3d094f46685abd85.dir
+      size: 38335372
+      nfiles: 2740
     - path: src/components/feature_extraction.py
       hash: md5
-      md5: 26ed1caedfa8220ba0d9732d9f26d89e
-      size: 5183
+      md5: c7f4869be414a6ded61a2c91d5f31dd8
+      size: 14727
     - path: src/pipeline/feature_extraction_pipeline.py
       hash: md5
-      md5: 70b509e340e8c51c5ad16a3362d35928
-      size: 2884
+      md5: 6941981ceac5f611d0cb5270468f0ebb
+      size: 3032
     outs:
     - path: artifacts/features
       hash: md5
-      md5: f53fb57ab7c66994a2b8e6a55c4df57d.dir
-      size: 11690645
+      md5: e158d555eedf921c4465613deec70c4f.dir
+      size: 26192504
       nfiles: 3
   model_training:
     cmd: python -m src.pipeline.model_training_pipeline
     deps:
     - path: artifacts/features
       hash: md5
-      md5: f53fb57ab7c66994a2b8e6a55c4df57d.dir
-      size: 11690645
+      md5: e158d555eedf921c4465613deec70c4f.dir
+      size: 26192504
       nfiles: 3
     - path: src/components/model_training.py
       hash: md5
-      md5: fa01b0d4245636a3ef176d2658cbc93f
-      size: 8023
+      md5: f90317d9122ec20ca64164366d50f208
+      size: 37133
     - path: src/pipeline/model_training_pipeline.py
       hash: md5
       md5: f9e9b8bc0b1049f75a1e35ec7e610182
       size: 629
+    outs:
+    - path: artifacts/models/best_model.pkl
+      hash: md5
+      md5: 70e039ab220c4908488b3d6b77687f6f
+      size: 848929
   model_evaluation:
     cmd: python -m src.pipeline.model_evaluation_pipeline
     deps:
     - path: artifacts/features/test_features.csv
       hash: md5
-      md5: 1ccf0f9f206b18e2dda499c6066a023b
-      size: 267958
+      md5: dc21dd220935f1f8c6d0545e828f3c7f
+      size: 2230194
+    - path: artifacts/models/best_model.pkl
+      hash: md5
+      md5: 70e039ab220c4908488b3d6b77687f6f
+      size: 848929
     - path: src/components/model_evaluation.py
       hash: md5
-      md5: dfaf0e439f9bac07b3b9a567f46cdfde
-      size: 8446
+      md5: ca49ae02ab0897d57c845a5431408057
+      size: 20538
     - path: src/pipeline/model_evaluation_pipeline.py
       hash: md5
       md5: 5b0a1b221e7851588fdcd93381ead581

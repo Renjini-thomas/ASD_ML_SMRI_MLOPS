@@ -34,6 +34,8 @@ stages:
       - src/pipeline/model_training_pipeline.py
       - src/components/model_training.py
       - artifacts/features
+    outs:
+      - artifacts/models/best_model.pkl
   
   model_evaluation:
     cmd: python -m src.pipeline.model_evaluation_pipeline
@@ -41,5 +43,6 @@ stages:
       - src/pipeline/model_evaluation_pipeline.py
       - src/components/model_evaluation.py
       - artifacts/features/test_features.csv
+      - artifacts/models/best_model.pkl
     
     

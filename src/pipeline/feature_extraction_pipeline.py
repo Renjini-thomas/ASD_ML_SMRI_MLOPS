@@ -32,11 +32,13 @@ class FeatureExtractionPipeline:
 
                 # PARAMS
                 mlflow.log_param("image_size", 224)
-                mlflow.log_param("lbp_points", 8)
-                mlflow.log_param("lbp_radius", 1)
-                mlflow.log_param("glcm_features", 7)
-                mlflow.log_param("lbp_features", 256)
-                mlflow.log_param("gfcc_features",6)
+                # mlflow.log_param("lbp_points", 8)
+                # mlflow.log_param("lbp_radius", 1)
+                # mlflow.log_param("glcm_features", 7)
+                # mlflow.log_param("lbp_features", 256)
+                # mlflow.log_param("gfcc_features",6)
+                mlflow.log_param("feature_extractor", "DenseNet121 RadImageNet")
+                # mlflow.log_param("pretrained", True)
 
                 # ================= TRAIN =================
                 logger.info("Extracting features from training data...")

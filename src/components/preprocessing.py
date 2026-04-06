@@ -215,9 +215,23 @@ class DataPreprocessing:
                         del img
 
                         mid = volume.shape[0] // 2
-                        slice_2d = volume[mid, :, :]
-                        slice_2d = np.rot90(slice_2d)
-                        slice_2d = self.normalize_slice(slice_2d)
+
+                        slice_indices = [mid - 2, mid, mid + 2]
+
+                        for i, idx in enumerate(slice_indices):
+
+                            if idx < 0 or idx >= volume.shape[0]:
+                                continue
+
+                            slice_2d = volume[idx, :, :]
+                            slice_2d = np.rot90(slice_2d)
+                            slice_2d = self.normalize_slice(slice_2d)
+
+                            subject_name = os.path.splitext(file)[0]
+                            filename = f"{subject_name}_slice_{i}.png"
+
+                            cv2.imwrite(os.path.join(class_path, filename), slice_2d)
+                        
 
                         subject_name = os.path.splitext(file)[0]
                         filename = f"{subject_name}_mid.png"
