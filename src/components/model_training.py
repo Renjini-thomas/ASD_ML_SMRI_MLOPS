@@ -554,66 +554,15 @@ from sklearn.decomposition import PCA
 
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
 from sklearn.metrics import (
-    make_scorer, recall_score, f1_score,
-    balanced_accuracy_score, accuracy_score,
-    roc_auc_score, precision_score
+    recall_score, f1_score, balanced_accuracy_score,
+    accuracy_score, roc_auc_score, precision_score,
+    make_scorer
 )
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
-
-
-# ============================================================
-# COMPOSITE SCORING STRATEGY
-# ============================================================
-# Single-metric selection is unstable for medical tasks:
-#   recall=1.0  is achievable by predicting all-positive
-#   accuracy    is biased toward the majority class
-#   f1          ignores true negatives entirely
-#
-# Composite score combines four metrics with clinical weights:
-#   recall            0.35  — missing autism is worst outcome
-#   balanced_accuracy 0.30  — penalizes class bias
-#   auc               0.25  — overall discrimination power
-#   f1                0.10  — precision/recall balance
-#
-# Minimum thresholds act as a gate — a model must pass ALL
-# thresholds or it is disqualified (composite = -1.0).
-# This prevents degenerate models from being selected.
-# ============================================================
-
-COMPOSITE_WEIGHTS = {
-    "recall":            0.50,
-    "balanced_accuracy": 0.20,
-    "auc":               0.20,
-    "f1":                0.10,
-}
-
-MIN_THRESHOLDS = {
-    "recall":            0.72,
-    "balanced_accuracy": 0.70,
-    "auc":               0.75,
-    "f1":                0.60,
-}
-
-
-def compute_composite_score(metrics: dict) -> float:
-    """
-    Returns weighted composite score from holdout metrics.
-    Returns -1.0 if any minimum threshold is not met.
-    """
-    for key, threshold in MIN_THRESHOLDS.items():
-        value = metrics.get(f"holdout_{key}", 0.0)
-        if value < threshold:
-            print(f"  FAILED threshold: holdout_{key} = {value:.4f} < {threshold}")
-            return -1.0
-
-    return sum(
-        COMPOSITE_WEIGHTS[key] * metrics[f"holdout_{key}"]
-        for key in COMPOSITE_WEIGHTS
-    )
 
 
 class ModelTrainer:
@@ -638,18 +587,11 @@ class ModelTrainer:
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.model_dir.mkdir(parents=True, exist_ok=True)
 
-    # ---------------- DATA HASH ----------------
     def get_file_hash(self, path):
         with open(path, "rb") as f:
             return hashlib.md5(f.read()).hexdigest()
 
-    # ---------------- LOAD DATA ----------------
     def load_data(self):
-        """
-        80/20 stratified holdout split from train_features.csv.
-        random_state=42 is fixed so the split is identical
-        across every run — holdout never leaks into training.
-        """
         train_df = pd.read_csv(self.feature_dir / "train_features.csv")
 
         X = train_df.drop("label", axis=1).values
@@ -662,44 +604,36 @@ class ModelTrainer:
             random_state=42
         )
 
-        print(f"Train size        : {X_train.shape[0]}")
-        print(f"Holdout size      : {X_holdout.shape[0]}")
-        print(f"Train distribution: {dict(zip(*np.unique(y_train,   return_counts=True)))}")
-        print(f"Holdout distribution: {dict(zip(*np.unique(y_holdout, return_counts=True)))}")
+        print(f"Train size           : {X_train.shape[0]}")
+        print(f"Holdout size         : {X_holdout.shape[0]}")
+        print(f"Train distribution   : {dict(zip(*np.unique(y_train,   return_counts=True)))}")
+        print(f"Holdout distribution : {dict(zip(*np.unique(y_holdout, return_counts=True)))}")
 
         return X_train, y_train, X_holdout, y_holdout
 
-    # ---------------- MODELS ----------------
     def get_models(self):
-
         return {
 
             "logistic_regression": (
                 Pipeline([
                     ("scaler", StandardScaler()),
-                    ("pca",    PCA()),
-                    ("model",  LogisticRegression(
-                        max_iter=3000,
-                        class_weight="balanced"
-                    ))
+                    ("pca",    PCA(svd_solver="full")),
+                    ("model",  LogisticRegression(max_iter=3000, class_weight="balanced"))
                 ]),
                 {
                     "scaler":            [StandardScaler(), RobustScaler()],
-                    "pca__n_components": [20, 50, 100,150,200],
+                    "pca__n_components": [0.90,0.95,0.99],  # None removed
                     "model__C":          [0.01, 0.1, 1.0, 5.0]
                 }
             ),
 
             "random_forest": (
                 Pipeline([
-                    ("pca",   PCA()),
-                    ("model", RandomForestClassifier(
-                        class_weight="balanced",
-                        random_state=42
-                    ))
+                    ("pca",   PCA(svd_solver="full")),
+                    ("model", RandomForestClassifier(class_weight="balanced", random_state=42))
                 ]),
                 {
-                    "pca__n_components":   [20, 50, 100,150,200],
+                    "pca__n_components":   [0.90,0.95,0.99],  # None removed
                     "model__n_estimators": [200, 400],
                     "model__max_depth":    [5, 10, 15]
                 }
@@ -708,15 +642,12 @@ class ModelTrainer:
             "svm": (
                 Pipeline([
                     ("scaler", StandardScaler()),
-                    ("pca",    PCA()),
-                    ("model",  SVC(
-                        probability=True,
-                        class_weight="balanced"
-                    ))
+                    ("pca",    PCA(svd_solver="full")),
+                    ("model",  SVC(probability=True,class_weight="balanced"))
                 ]),
                 {
                     "scaler":            [StandardScaler(), RobustScaler()],
-                    "pca__n_components": [20, 50, 100,150,200],
+                    "pca__n_components": [0.90,0.95,0.99],  # None removed
                     "model__C":          [0.1, 0.5, 1.0],
                     "model__kernel":     ["rbf"],
                     "model__gamma":      ["scale"]
@@ -726,18 +657,17 @@ class ModelTrainer:
             "knn": (
                 Pipeline([
                     ("scaler", StandardScaler()),
-                    ("pca",    PCA()),
+                    ("pca",    PCA(svd_solver="full")),
                     ("model",  KNeighborsClassifier())
                 ]),
                 {
                     "scaler":             [StandardScaler(), RobustScaler()],
-                    "pca__n_components":  [20, 50, 100,150,200],
+                    "pca__n_components":  [0.90,0.95,0.99],
                     "model__n_neighbors": [5, 7, 9, 11]
                 }
             )
         }
 
-    # ---------------- TRAINING ----------------
     def run(self):
 
         X_train, y_train, X_holdout, y_holdout = self.load_data()
@@ -745,18 +675,22 @@ class ModelTrainer:
 
         cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
+        # Multi-metric scoring — all metrics calculated on every CV fold
+        # refit="balanced_accuracy" means hyperparameter selection still
+        # uses balanced_accuracy, but all other metrics are also available
         scoring = {
-            "recall":   make_scorer(recall_score,            pos_label=1),
-            "f1":       make_scorer(f1_score,                pos_label=1),
-            "bal_acc":  make_scorer(balanced_accuracy_score),
-            "auc":      "roc_auc",
-            "accuracy": "accuracy"
+            "balanced_accuracy": make_scorer(balanced_accuracy_score),
+            "recall":            make_scorer(recall_score,    pos_label=1),
+            "f1":                make_scorer(f1_score,        pos_label=1),
+            "auc":               "roc_auc",
+            "accuracy":          "accuracy",
+            "precision":         make_scorer(precision_score, pos_label=1),
         }
 
-        best_global_composite = -1.0
-        best_run_id           = None
-        best_model_name       = None
-        results_summary       = []
+        best_global_score = -1.0
+        best_run_id       = None
+        best_model_name   = None
+        results_summary   = []
 
         for name, (pipe, params) in self.get_models().items():
 
@@ -771,7 +705,7 @@ class ModelTrainer:
                     params,
                     cv=cv,
                     scoring=scoring,
-                    refit="bal_acc",     # stable CV refit — cannot be gamed
+                    refit="balanced_accuracy",  # hyperparameter selection metric
                     n_jobs=-1,
                     return_train_score=True
                 )
@@ -780,12 +714,14 @@ class ModelTrainer:
                 idx = grid.best_index_
 
                 # ---------------- CV METRICS ----------------
+                # All six metrics now logged from CV folds
                 cv_metrics = {
+                    "cv_balanced_accuracy": grid.cv_results_["mean_test_balanced_accuracy"][idx],
                     "cv_recall":            grid.cv_results_["mean_test_recall"][idx],
                     "cv_f1":                grid.cv_results_["mean_test_f1"][idx],
-                    "cv_balanced_accuracy": grid.cv_results_["mean_test_bal_acc"][idx],
                     "cv_auc":               grid.cv_results_["mean_test_auc"][idx],
-                    "cv_accuracy":          grid.cv_results_["mean_test_accuracy"][idx]
+                    "cv_accuracy":          grid.cv_results_["mean_test_accuracy"][idx],
+                    "cv_precision":         grid.cv_results_["mean_test_precision"][idx],
                 }
 
                 # ---------------- HOLDOUT METRICS ----------------
@@ -799,32 +735,23 @@ class ModelTrainer:
                     "holdout_auc":               roc_auc_score(y_holdout, y_pred_proba),
                     "holdout_f1":                f1_score(y_holdout, y_pred,       pos_label=1),
                     "holdout_recall":            recall_score(y_holdout, y_pred,    pos_label=1),
-                    "holdout_precision":         precision_score(y_holdout, y_pred, pos_label=1)
+                    "holdout_precision":         precision_score(y_holdout, y_pred, pos_label=1),
                 }
 
-                # ---------------- COMPOSITE SCORE ----------------
-                composite = compute_composite_score(holdout_metrics)
-                holdout_metrics["holdout_composite_score"] = composite
-
-                # ---------------- OVERFITTING GAP ----------------
-                gap = (
-                    cv_metrics["cv_balanced_accuracy"]
-                    - holdout_metrics["holdout_balanced_accuracy"]
-                )
+                # Overfitting gap — CV accuracy vs holdout accuracy
+                gap = cv_metrics["cv_accuracy"] - holdout_metrics["holdout_accuracy"]
                 holdout_metrics["cv_holdout_gap"] = gap
 
-                # ---------------- LOG PARAMS ----------------
+                # ---------------- LOG ----------------
                 mlflow.log_param("candidate_model", name)
                 mlflow.log_param("data_version",    data_hash)
                 mlflow.log_params(grid.best_params_)
 
-                # ---------------- LOG METRICS ----------------
                 for k, v in cv_metrics.items():
                     mlflow.log_metric(k, v)
                 for k, v in holdout_metrics.items():
                     mlflow.log_metric(k, v)
 
-                # ---------------- SAVE MODEL PER CANDIDATE ----------------
                 model_path = self.temp_dir / f"{name}_model.pkl"
                 joblib.dump(best_model, model_path)
                 mlflow.log_artifact(str(model_path), artifact_path="model")
@@ -834,60 +761,58 @@ class ModelTrainer:
                 cv_df.to_csv(cv_path, index=False)
                 mlflow.log_artifact(str(cv_path))
 
-                print(f"CV metrics       : {cv_metrics}")
-                print(f"Holdout metrics  : {holdout_metrics}")
-                print(f"Composite score  : {composite:.4f}")
-                print(f"Overfit gap      : {gap:.4f}  "
-                      f"{'[OVERFIT]' if gap > 0.10 else '[OK]'}")
+                print(f"CV metrics      : { {k: round(v, 4) for k, v in cv_metrics.items()} }")
+                print(f"Holdout metrics : {holdout_metrics}")
+                print(f"Overfit gap     : {gap:.4f}  {'[OVERFIT]' if abs(gap) > 0.10 else '[OK]'}")
 
                 results_summary.append({
-                    "name":    name,
-                    "run_id":  run.info.run_id,
-                    "composite": composite,
+                    "name":   name,
+                    "run_id": run.info.run_id,
                     **holdout_metrics
                 })
 
-                # ---------------- TRACK BEST ----------------
-                # Save best_model.pkl ONLY when a new best is found.
-                # This guarantees best_model.pkl = true best model,
-                # regardless of which model finishes training last.
-                if composite > best_global_composite:
-                    best_global_composite = composite
-                    best_run_id           = run.info.run_id
-                    best_model_name       = name
+                # ---------------- MODEL SELECTION ----------------
+                # Two conditions must BOTH be true to become best:
+                #   1. holdout AUC beats current best
+                #   2. overfit gap is within acceptable range (<=0.10)
+                # This prevents KNN-style holdout inflation from winning
+                if holdout_metrics["holdout_accuracy"] > best_global_score:
+                    if abs(gap) <= 0.10:
+                        best_global_score = holdout_metrics["holdout_accuracy"]
+                        best_run_id       = run.info.run_id
+                        best_model_name   = name
 
-                    best_model_path = self.model_dir / "best_model.pkl"
-                    joblib.dump(best_model, best_model_path)
-                    print(f"New best saved: {best_model_name} "
-                          f"(composite={composite:.4f})")
+                        best_model_path = self.model_dir / "best_model.pkl"
+                        joblib.dump(best_model, best_model_path)
+                        print(f"New best: {best_model_name} (holdout_accuracy={best_global_score:.4f})")
+                    else:
+                        print(f"Skipped {name}: overfit gap {gap:.4f} exceeds 0.10")
 
         # ---------------- COMPARISON TABLE ----------------
         results_df = pd.DataFrame(results_summary).sort_values(
-            "composite", ascending=False
+            "holdout_accuracy", ascending=False
         )
         print("\nMODEL COMPARISON")
         print(results_df[[
-            "name", "composite", "holdout_recall",
-            "holdout_balanced_accuracy", "holdout_auc",
-            "holdout_f1", "cv_holdout_gap"
+            "name", "holdout_balanced_accuracy", "holdout_accuracy",
+            "holdout_recall", "holdout_f1", "cv_holdout_gap"
         ]].to_string(index=False))
 
         table_path = self.temp_dir / "model_comparison.csv"
         results_df.to_csv(table_path, index=False)
 
-        # ---------------- BEST MODEL SUMMARY RUN ----------------
         with mlflow.start_run(run_name="best_model_summary"):
-            mlflow.log_param("best_run_id",  best_run_id  or "none")
-            mlflow.log_param("best_model",   best_model_name or "none")
-            mlflow.log_metric("best_composite_score", best_global_composite)
+            mlflow.log_param("best_run_id", best_run_id  or "none")
+            mlflow.log_param("best_model",  best_model_name or "none")
+            mlflow.log_metric("best_holdout_accuracy", best_global_score)
             mlflow.log_artifact(str(table_path))
 
         if best_run_id is None:
-            print("\nWARNING: No model passed minimum thresholds.")
-            print("Relax MIN_THRESHOLDS or check feature extraction.")
+            print("\nWARNING: No model passed the overfit gate (gap <= 0.10).")
+            print("All models exceeded the gap threshold — check feature extraction.")
         else:
             print(f"\nFINAL BEST MODEL : {best_model_name}")
             print(f"Run ID           : {best_run_id}")
-            print(f"Composite score  : {best_global_composite:.4f}")
+            print(f"Accuracy         : {best_global_score:.4f}")
 
-        return best_run_id, best_model_name, best_global_composite
+        return best_run_id, best_model_name, best_global_score

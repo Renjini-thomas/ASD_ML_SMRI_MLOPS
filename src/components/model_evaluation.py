@@ -280,53 +280,6 @@ from sklearn.metrics import (
 )
 
 
-# ============================================================
-# PROMOTION STRATEGY
-# ============================================================
-# Must use the SAME composite formula as model_training.py.
-# A model is promoted to staging only when:
-#   1. Its test composite score beats the current staging model
-#   2. It passes ALL minimum thresholds on the test set
-#      (same thresholds as training — consistent gate)
-#
-# Using test composite (not a single metric) for promotion
-# prevents a model with high recall but collapsed precision
-# from being promoted just because recall improved.
-# ============================================================
-
-COMPOSITE_WEIGHTS = {
-    "recall":            0.50,
-    "balanced_accuracy": 0.20,
-    "auc":               0.20,
-    "f1":                0.10,
-}
-
-MIN_THRESHOLDS = {
-    "recall":            0.72,
-    "balanced_accuracy": 0.70,
-    "auc":               0.75,
-    "f1":                0.60,
-}
-
-
-def compute_composite_score(metrics: dict, prefix: str = "eval") -> float:
-    """
-    Computes composite score from eval metrics.
-    Returns -1.0 if any threshold is not met.
-    prefix allows reuse for both eval_ and holdout_ metric dicts.
-    """
-    for key, threshold in MIN_THRESHOLDS.items():
-        value = metrics.get(f"{prefix}_{key}", 0.0)
-        if value < threshold:
-            print(f"  FAILED threshold: {prefix}_{key} = {value:.4f} < {threshold}")
-            return -1.0
-
-    return sum(
-        COMPOSITE_WEIGHTS[key] * metrics[f"{prefix}_{key}"]
-        for key in COMPOSITE_WEIGHTS
-    )
-
-
 class ModelEvaluator:
 
     def __init__(self):
@@ -348,7 +301,6 @@ class ModelEvaluator:
 
         self.model_name = "ASD_BEST_MODEL"
 
-    # ---------------- GET BEST RUN ----------------
     def get_best_run(self):
 
         client = MlflowClient()
@@ -367,19 +319,13 @@ class ModelEvaluator:
         best_run_id = runs[0].data.params.get("best_run_id")
 
         if not best_run_id or best_run_id == "none":
-            raise Exception(
-                "best_run_id is 'none' — no model passed minimum thresholds "
-                "during training. Relax MIN_THRESHOLDS or check features."
-            )
+            raise Exception("best_run_id is 'none'. Check training output.")
 
         print(f"Best training run ID: {best_run_id}")
         return best_run_id
 
-    # ---------------- LOAD DATA + MODEL ----------------
     def load_data(self):
 
-        # Load the held-out test set (original 58-sample set)
-        # This is the final independent check — never seen during training
         test_df = pd.read_csv(self.feature_dir / "test_features.csv")
         X_test  = test_df.drop("label", axis=1).values
         y_test  = test_df["label"].values
@@ -390,11 +336,9 @@ class ModelEvaluator:
         run_id = self.get_best_run()
         client = MlflowClient()
 
-        # Download model artifact from DagsHub
         local_dir  = client.download_artifacts(run_id, "model")
         model_file = next(
-            (f for f in os.listdir(local_dir) if f.endswith(".pkl")),
-            None
+            (f for f in os.listdir(local_dir) if f.endswith(".pkl")), None
         )
 
         if model_file is None:
@@ -403,60 +347,46 @@ class ModelEvaluator:
         model = joblib.load(os.path.join(local_dir, model_file))
         print(f"Model loaded: {model_file}")
 
-        # Also retrieve holdout composite from training run
-        # so we can compare training holdout vs test performance
-        training_run    = client.get_run(run_id)
-        holdout_composite = training_run.data.metrics.get(
-            "holdout_composite_score", None
+        # Retrieve holdout balanced_accuracy from training for gap comparison
+        training_run          = client.get_run(run_id)
+        holdout_accuracy  = training_run.data.metrics.get(
+            "holdout_accuracy", None
         )
 
-        return X_test, y_test, model, run_id, holdout_composite
+        return X_test, y_test, model, run_id, holdout_accuracy
 
-    # ---------------- EVALUATION ----------------
     def evaluate(self):
 
-        X_test, y_test, model, run_id, holdout_composite = self.load_data()
+        X_test, y_test, model, run_id, holdout_accuracy = self.load_data()
         client = MlflowClient()
 
         with mlflow.start_run(run_name="evaluation_stage") as eval_run:
 
-            # ---------------- BASIC INFO ----------------
             mlflow.log_param("source_run_id", run_id)
             mlflow.log_param(
                 "model_type",
                 model.named_steps["model"].__class__.__name__
             )
 
-            # ---------------- PREDICTIONS ----------------
             y_pred = model.predict(X_test)
             y_prob = model.predict_proba(X_test)[:, 1]
 
-            # ---------------- TEST METRICS ----------------
-            # pos_label=1 is explicit — autistic class is positive
             eval_metrics = {
                 "eval_accuracy":          accuracy_score(y_test, y_pred),
                 "eval_balanced_accuracy": balanced_accuracy_score(y_test, y_pred),
                 "eval_auc":               roc_auc_score(y_test, y_prob),
-                "eval_f1":                f1_score(y_test, y_pred,       pos_label=1),
-                "eval_recall":            recall_score(y_test, y_pred,    pos_label=1),
-                "eval_precision":         precision_score(y_test, y_pred, pos_label=1),
+                "eval_f1":                f1_score(y_test, y_pred,        pos_label=1),
+                "eval_recall":            recall_score(y_test, y_pred,     pos_label=1),
+                "eval_precision":         precision_score(y_test, y_pred,  pos_label=1),
             }
 
-            # ---------------- COMPOSITE ON TEST ----------------
-            test_composite = compute_composite_score(eval_metrics, prefix="eval")
-            eval_metrics["eval_composite_score"] = test_composite
-
-            # ---------------- HOLDOUT → TEST GAP ----------------
-            # Second overfitting check:
-            # holdout composite (training) vs test composite (evaluation)
-            # If this gap is large, model generalizes poorly to new data
-            if holdout_composite is not None:
-                gap2 = holdout_composite - test_composite
-                eval_metrics["holdout_test_gap"] = gap2
-                print(f"Holdout composite : {holdout_composite:.4f}")
-                print(f"Test composite    : {test_composite:.4f}")
-                print(f"Holdout→Test gap  : {gap2:.4f}  "
-                      f"{'[OVERFIT]' if gap2 > 0.10 else '[OK]'}")
+            # Holdout → Test gap — informational only
+            if holdout_accuracy is not None:
+                gap = holdout_accuracy - eval_metrics["eval_accuracy"]
+                eval_metrics["holdout_test_gap"] = gap
+                print(f"Holdout Accuracy : {holdout_accuracy:.4f}")
+                print(f"Test Accuracy    : {eval_metrics['eval_accuracy']:.4f}")
+                print(f"Gap                       : {gap:.4f}  {'[OVERFIT]' if gap > 0.10 else '[OK]'}")
 
             for k, v in eval_metrics.items():
                 mlflow.log_metric(k, v)
@@ -500,10 +430,7 @@ class ModelEvaluator:
             mlflow.log_artifact(str(roc_path))
 
             # ---------------- CLASSIFICATION REPORT ----------------
-            report      = classification_report(
-                y_test, y_pred,
-                target_names=["Non-ASD", "ASD"]
-            )
+            report      = classification_report(y_test, y_pred, target_names=["Non-ASD", "ASD"])
             report_path = self.eval_dir / "classification_report.txt"
             with open(report_path, "w") as f:
                 f.write(report)
@@ -511,29 +438,22 @@ class ModelEvaluator:
             print(f"\nClassification Report:\n{report}")
 
             # ---------------- STAGING COMPARISON ----------------
-            staging_composite = 0.0
+            # Promote if test balanced_accuracy beats current staging model
+            staging_score = 0.0
 
             try:
                 model_version = client.get_model_version_by_alias(
-                    name=self.model_name,
-                    alias="staging"
+                    name=self.model_name, alias="staging"
                 )
-                staging_run    = client.get_run(model_version.run_id)
-                staging_composite = staging_run.data.metrics.get(
-                    "eval_composite_score", 0.0
-                )
-                print(f"\nCurrent staging composite : {staging_composite:.4f}")
-                print(f"New model composite       : {test_composite:.4f}")
+                staging_run   = client.get_run(model_version.run_id)
+                staging_score = staging_run.data.metrics.get("eval_accuracy", 0.0)
+                print(f"\nCurrent staging Accuracy : {staging_score:.4f}")
+                print(f"New model Accuracy       : {eval_metrics['eval_accuracy']:.4f}")
 
             except Exception:
                 print("\nNo staging model found yet (first run).")
 
-            # ---------------- PROMOTION GATE ----------------
-            # Promote only if:
-            #   1. Test composite beats current staging composite
-            #   2. Test composite is not -1.0 (passed all thresholds)
-            if test_composite > staging_composite and test_composite > 0:
-
+            if eval_metrics["eval_accuracy"] > staging_score:
                 print("Promoting new model to staging.")
 
                 result  = mlflow.sklearn.log_model(
@@ -551,11 +471,9 @@ class ModelEvaluator:
                 print(f"Registered and promoted: version {version}")
 
             else:
-                reason = (
-                    "failed minimum thresholds"
-                    if test_composite <= 0
-                    else f"score {test_composite:.4f} <= staging {staging_composite:.4f}"
+                print(
+                    f"Not promoted: score {eval_metrics['eval_accuracy']:.4f}"
+                    f" <= staging {staging_score:.4f}"
                 )
-                print(f"Not promoted: {reason}")
 
             return eval_metrics

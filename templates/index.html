@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ASD Prediction — sMRI Analysis</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #09090f;
+      --surface:   #111118;
+      --border:    #1e1e2e;
+      --accent:    #6ee7f7;
+      --accent2:   #a78bfa;
+      --danger:    #f87171;
+      --success:   #4ade80;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --card:      #13131c;
+      --glow:      rgba(110,231,247,0.15);
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      font-size: 14px;
+      overflow-x: hidden;
+    }
+
+    /* ── Grid noise bg ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(110,231,247,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(110,231,247,0.02) 1px, transparent 1px);
+      background-size: 32px 32px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Ambient orb ── */
+    body::after {
+      content: '';
+      position: fixed;
+      top: -200px; left: 50%;
+      transform: translateX(-50%);
+      width: 800px; height: 500px;
+      background: radial-gradient(ellipse, rgba(110,231,247,0.06) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ─── HEADER ─── */
+    header {
+      position: relative; z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 40px;
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(8px);
+    }
+
+    .logo {
+      display: flex; align-items: center; gap: 12px;
+    }
+
+    .logo-icon {
+      width: 36px; height: 36px;
+      border: 1.5px solid var(--accent);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 12px var(--glow);
+    }
+
+    .logo-icon svg { width: 20px; height: 20px; }
+
+    .logo-text {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+
+    .logo-text span { color: var(--accent); }
+
+    .badge {
+      font-size: 11px;
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+    }
+
+    .badge.live::before {
+      content: '●';
+      color: var(--success);
+      margin-right: 6px;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* ─── MAIN LAYOUT ─── */
+    main {
+      position: relative; z-index: 1;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 48px 24px;
+    }
+
+    .hero {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .hero-tag {
+      display: inline-block;
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--accent);
+      border: 1px solid rgba(110,231,247,0.2);
+      padding: 4px 14px;
+      border-radius: 20px;
+      margin-bottom: 20px;
+    }
+
+    .hero h1 {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: clamp(32px, 5vw, 52px);
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+      margin-bottom: 16px;
+    }
+
+    .hero h1 .hi { color: var(--accent); }
+    .hero h1 .lo { color: var(--accent2); }
+
+    .hero p {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+      max-width: 540px;
+      margin: 0 auto;
+    }
+
+    /* ─── UPLOAD CARD ─── */
+    .upload-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 24px;
+      transition: border-color 0.3s;
+    }
+
+    .upload-card:hover { border-color: rgba(110,231,247,0.3); }
+
+    .section-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 20px;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* drop zone */
+    .dropzone {
+      border: 1.5px dashed var(--border);
+      border-radius: 12px;
+      padding: 48px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s;
+      position: relative;
+    }
+
+    .dropzone:hover,
+    .dropzone.drag-over {
+      border-color: var(--accent);
+      background: rgba(110,231,247,0.03);
+      box-shadow: 0 0 24px var(--glow);
+    }
+
+    .dropzone input[type="file"] {
+      position: absolute; inset: 0;
+      opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+
+    .drop-icon {
+      width: 48px; height: 48px;
+      margin: 0 auto 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--accent);
+    }
+
+    .drop-title {
+      font-family: 'Syne', sans-serif;
+      font-weight: 600;
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+
+    .drop-sub { color: var(--muted); font-size: 12px; line-height: 1.6; }
+
+    .file-types {
+      display: flex; gap: 8px; justify-content: center;
+      flex-wrap: wrap; margin-top: 16px;
+    }
+
+    .ft-chip {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+
+    /* selected file display */
+    .file-info {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: rgba(110,231,247,0.05);
+      border: 1px solid rgba(110,231,247,0.15);
+      border-radius: 10px;
+    }
+
+    .file-info.show { display: flex; }
+
+    .file-info-icon { color: var(--accent); flex-shrink: 0; }
+    .file-info-name { flex: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .file-info-size { color: var(--muted); font-size: 12px; flex-shrink: 0; }
+
+    .remove-file {
+      background: none; border: none; cursor: pointer;
+      color: var(--muted); padding: 2px; transition: color 0.2s;
+    }
+    .remove-file:hover { color: var(--danger); }
+
+    /* ─── SUBMIT ─── */
+    .btn-predict {
+      width: 100%;
+      margin-top: 20px;
+      padding: 14px;
+      background: var(--accent);
+      color: #09090f;
+      border: none;
+      border-radius: 10px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-predict:hover:not(:disabled) {
+      box-shadow: 0 0 24px rgba(110,231,247,0.4);
+      transform: translateY(-1px);
+    }
+
+    .btn-predict:disabled {
+      opacity: 0.5; cursor: not-allowed; transform: none;
+    }
+
+    .btn-predict .btn-loader {
+      display: none;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(9,9,15,0.3);
+      border-top-color: #09090f;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto;
+    }
+
+    .btn-predict.loading .btn-text { display: none; }
+    .btn-predict.loading .btn-loader { display: block; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── RESULT PANEL ─── */
+    #result-panel {
+      display: none;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      animation: fadeUp 0.4s ease both;
+    }
+
+    #result-panel.show { display: block; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .result-header {
+      padding: 20px 28px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    .result-header .section-label { margin: 0; }
+
+    .result-body { padding: 28px; }
+
+    /* verdict */
+    .verdict {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 28px;
+    }
+
+    .verdict-badge {
+      width: 72px; height: 72px;
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      font-size: 28px;
+    }
+
+    .verdict-badge.autistic {
+      background: rgba(167,139,250,0.12);
+      border: 1px solid rgba(167,139,250,0.3);
+    }
+
+    .verdict-badge.non-autistic {
+      background: rgba(74,222,128,0.1);
+      border: 1px solid rgba(74,222,128,0.25);
+    }
+
+    .verdict-text h2 {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 26px;
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+
+    .verdict-text h2.autistic   { color: var(--accent2); }
+    .verdict-text h2.non-autistic { color: var(--success); }
+
+    .verdict-text p { color: var(--muted); font-size: 13px; }
+
+    /* confidence meter */
+    .conf-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .conf-bar-wrap {
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    .conf-bar-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .conf-bar-label strong { color: var(--text); font-weight: 500; }
+
+    .conf-bar-track {
+      height: 6px;
+      background: var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .conf-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 1s cubic-bezier(.22,.61,.36,1);
+    }
+
+    .conf-bar-fill.autistic   { background: var(--accent2); }
+    .conf-bar-fill.non-autistic { background: var(--success); }
+
+    /* meta info */
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 12px;
+    }
+
+    .meta-item {
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .meta-item .meta-key {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .meta-item .meta-val {
+      font-family: 'Syne', sans-serif;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    /* error state */
+    .error-box {
+      display: none;
+      padding: 14px 18px;
+      background: rgba(248,113,113,0.08);
+      border: 1px solid rgba(248,113,113,0.25);
+      border-radius: 10px;
+      color: var(--danger);
+      font-size: 13px;
+      margin-top: 16px;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .error-box.show { display: flex; }
+
+    /* ─── FOOTER ─── */
+    footer {
+      position: relative; z-index: 1;
+      text-align: center;
+      padding: 32px;
+      color: var(--muted);
+      font-size: 12px;
+      border-top: 1px solid var(--border);
+      margin-top: 40px;
+    }
+
+    footer a { color: var(--accent); text-decoration: none; }
+
+    @media (max-width: 600px) {
+      header { padding: 16px 20px; }
+      main   { padding: 32px 16px; }
+      .conf-row { grid-template-columns: 1fr; }
+      .verdict { flex-direction: column; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 9 9 9 9 0 0 1-9 9 9 9 0 0 1-9-9"/>
+        <path d="M12 3v3m0 12v3M3 12h3m12 0h3"/>
+      </svg>
+    </div>
+    <span class="logo-text">ASD<span>Predict</span></span>
+  </div>
+  <span class="badge live">Model v10 · Staging</span>
+</header>
+
+<!-- ── MAIN ── -->
+<main>
+
+  <div class="hero">
+    <div class="hero-tag">sMRI · Machine Learning</div>
+    <h1>
+      <span class="hi">Autism Spectrum</span><br/>
+      <span class="lo">Disorder Detection</span>
+    </h1>
+    <p>Upload a structural MRI scan (.nii / .nii.gz / .mgz) or a pre-extracted 2D image to classify the sample as Autistic or Non-Autistic using the registered staging model.</p>
+  </div>
+
+  <!-- Upload Card -->
+  <div class="upload-card">
+    <div class="section-label">Input Data</div>
+
+    <div class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" accept=".nii,.gz,.mgz,.png,.jpg,.jpeg"/>
+      <div class="drop-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+      </div>
+      <div class="drop-title">Drop your scan here</div>
+      <div class="drop-sub">or click to browse files</div>
+      <div class="file-types">
+        <span class="ft-chip">.nii</span>
+        <span class="ft-chip">.nii.gz</span>
+        <span class="ft-chip">.mgz</span>
+        <span class="ft-chip">.png</span>
+        <span class="ft-chip">.jpg</span>
+      </div>
+    </div>
+
+    <div class="file-info" id="fileInfo">
+      <svg class="file-info-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+      <span class="file-info-name" id="fileName">—</span>
+      <span class="file-info-size" id="fileSize">—</span>
+      <button class="remove-file" id="removeFile" title="Remove">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="error-box" id="errorBox">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="flex-shrink:0;margin-top:2px">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="8" x2="12" y2="12"/>
+        <line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      <span id="errorMsg"></span>
+    </div>
+
+    <button class="btn-predict" id="predictBtn" disabled>
+      <span class="btn-text">Run Prediction</span>
+      <span class="btn-loader"></span>
+    </button>
+  </div>
+
+  <!-- Result Panel -->
+  <div id="result-panel">
+    <div class="result-header">
+      <div class="section-label">Prediction Result</div>
+    </div>
+    <div class="result-body">
+
+      <div class="verdict">
+        <div class="verdict-badge" id="verdictBadge">🧠</div>
+        <div class="verdict-text">
+          <h2 id="verdictLabel">—</h2>
+          <p id="verdictSub">—</p>
+        </div>
+      </div>
+
+      <div class="conf-row" id="confRow" style="display:none">
+        <div class="conf-bar-wrap">
+          <div class="conf-bar-label">
+            <span>Non-Autistic</span>
+            <strong id="pctNA">—</strong>
+          </div>
+          <div class="conf-bar-track">
+            <div class="conf-bar-fill non-autistic" id="barNA" style="width:0%"></div>
+          </div>
+        </div>
+        <div class="conf-bar-wrap">
+          <div class="conf-bar-label">
+            <span>Autistic</span>
+            <strong id="pctASD">—</strong>
+          </div>
+          <div class="conf-bar-track">
+            <div class="conf-bar-fill autistic" id="barASD" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="meta-grid">
+        <div class="meta-item">
+          <div class="meta-key">Confidence</div>
+          <div class="meta-val" id="metaConf">—</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-key">Model</div>
+          <div class="meta-val">ASD_BEST_MODEL</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-key">Version</div>
+          <div class="meta-val">v10 · @staging</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-key">File</div>
+          <div class="meta-val" id="metaFile" style="font-size:12px;word-break:break-all">—</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  ASD Prediction System &nbsp;·&nbsp;
+  <a href="https://dagshub.com/renjini2539thomas/ASD_ML_SMRI_MLOPS" target="_blank">DagsHub Repo</a>
+  &nbsp;·&nbsp; Model registry via MLflow
+</footer>
+
+<script>
+  const fileInput   = document.getElementById('fileInput');
+  const dropzone    = document.getElementById('dropzone');
+  const fileInfo    = document.getElementById('fileInfo');
+  const fileName    = document.getElementById('fileName');
+  const fileSize    = document.getElementById('fileSize');
+  const removeFile  = document.getElementById('removeFile');
+  const predictBtn  = document.getElementById('predictBtn');
+  const errorBox    = document.getElementById('errorBox');
+  const errorMsg    = document.getElementById('errorMsg');
+  const resultPanel = document.getElementById('result-panel');
+
+  let selectedFile = null;
+
+  function fmtSize(bytes) {
+    if (bytes < 1024)       return bytes + ' B';
+    if (bytes < 1048576)    return (bytes/1024).toFixed(1) + ' KB';
+    return (bytes/1048576).toFixed(1) + ' MB';
+  }
+
+  function showFile(file) {
+    selectedFile = file;
+    fileName.textContent  = file.name;
+    fileSize.textContent  = fmtSize(file.size);
+    fileInfo.classList.add('show');
+    predictBtn.disabled = false;
+    hideError();
+    resultPanel.classList.remove('show');
+  }
+
+  function clearFile() {
+    selectedFile = null;
+    fileInput.value = '';
+    fileInfo.classList.remove('show');
+    predictBtn.disabled = true;
+    hideError();
+    resultPanel.classList.remove('show');
+  }
+
+  function showError(msg) {
+    errorMsg.textContent = msg;
+    errorBox.classList.add('show');
+  }
+
+  function hideError() {
+    errorBox.classList.remove('show');
+  }
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) showFile(fileInput.files[0]);
+  });
+
+  removeFile.addEventListener('click', clearFile);
+
+  // drag-and-drop
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+  dropzone.addEventListener('dragleave', ()  => dropzone.classList.remove('drag-over'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) showFile(e.dataTransfer.files[0]);
+  });
+
+  // predict
+  predictBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+
+    predictBtn.classList.add('loading');
+    predictBtn.disabled = true;
+    hideError();
+    resultPanel.classList.remove('show');
+
+    const fd = new FormData();
+    fd.append('file', selectedFile);
+
+    try {
+      const res  = await fetch('/predict', { method: 'POST', body: fd });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        showError(data.error || 'Prediction failed. Please try again.');
+        return;
+      }
+
+      renderResult(data);
+    } catch (err) {
+      showError('Network error: ' + err.message);
+    } finally {
+      predictBtn.classList.remove('loading');
+      predictBtn.disabled = false;
+    }
+  });
+
+  function renderResult(data) {
+    const isASD = data.label === 1;
+
+    // verdict badge + label
+    const badge = document.getElementById('verdictBadge');
+    const lbl   = document.getElementById('verdictLabel');
+    const sub   = document.getElementById('verdictSub');
+
+    badge.className = 'verdict-badge ' + (isASD ? 'autistic' : 'non-autistic');
+    badge.textContent = isASD ? '🔬' : '✅';
+    lbl.className   = isASD ? 'autistic' : 'non-autistic';
+    lbl.textContent = data.prediction;
+    sub.textContent = isASD
+      ? 'The structural MRI features are consistent with ASD patterns.'
+      : 'No significant ASD-related structural patterns detected.';
+
+    // confidence bars
+    if (data.probabilities) {
+      const confRow = document.getElementById('confRow');
+      confRow.style.display = 'grid';
+      const na  = data.probabilities['Non-Autistic'];
+      const asd = data.probabilities['Autistic'];
+      document.getElementById('pctNA').textContent  = na.toFixed(1) + '%';
+      document.getElementById('pctASD').textContent = asd.toFixed(1) + '%';
+      setTimeout(() => {
+        document.getElementById('barNA').style.width  = na  + '%';
+        document.getElementById('barASD').style.width = asd + '%';
+      }, 100);
+    }
+
+    // meta
+    document.getElementById('metaConf').textContent =
+      data.confidence ? data.confidence + '%' : 'N/A';
+    document.getElementById('metaFile').textContent = selectedFile ? selectedFile.name : '—';
+
+    resultPanel.classList.add('show');
+    resultPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+</script>
+</body>
+</html>

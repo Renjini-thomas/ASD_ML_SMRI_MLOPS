@@ -53,7 +53,7 @@ class DataIngestion:
         try:
             logger.info("Starting data ingestion...")
 
-            # ✅ Validate source path FIRST
+            # Validate source path FIRST
             if not os.path.exists(self.config.source_dir):
                 raise CustomException(
                     f"Source path does not exist: {self.config.source_dir}",
