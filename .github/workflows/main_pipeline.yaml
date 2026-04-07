@@ -46,7 +46,7 @@ jobs:
       # 7. Run pipeline ONLY if needed (DVC handles this internally)
       - name: Run DVC Pipeline
         run: |
-          dvc repro feature_extraction model_training model_evaluation
+          dvc repro --single-item feature_extraction model_training model_evaluation
 
       # 8. Test Flask app
       - name: Test Flask App
