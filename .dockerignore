@@ -1,0 +1,9 @@
+venv
+__pycache__
+*.pyc
+.dvc
+artifacts
+logs
+.git
+.gitignore
+.env
