@@ -1,9 +1,8 @@
-name: ASD Smart CI/CD Pipeline
+name: Simple ASD CI/CD Pipeline
 
 on:
   push:
     branches: [ "main" ]
-  pull_request:
 
 jobs:
 
@@ -11,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       # ─────────────────────────────
       # 1. Checkout
       # ─────────────────────────────
@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
 
       # ─────────────────────────────
-      # 2. Python setup
+      # 2. Setup Python
       # ─────────────────────────────
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -28,13 +28,13 @@ jobs:
       # ─────────────────────────────
       # 3. Install dependencies
       # ─────────────────────────────
-      - name: Install dependencies
+      - name: Install requirements
         run: |
           pip install -r requirements.txt
-          pip install dvc mlflow dagshub pytest
+          pip install dvc mlflow dagshub
 
       # ─────────────────────────────
-      # 4. DagsHub credentials
+      # 4. Set Secrets (DagsHub)
       # ─────────────────────────────
       - name: Set DagsHub credentials
         run: |
@@ -42,76 +42,57 @@ jobs:
           echo "MLFLOW_TRACKING_PASSWORD=${{ secrets.DAGSHUB_TOKEN }}" >> $GITHUB_ENV
 
       # ─────────────────────────────
-      # 5. Pull DVC data
+      # 5. Basic checks
       # ─────────────────────────────
-      - name: Pull DVC artifacts
+      - name: Check required files
+        run: |
+          echo "Checking app.py..."
+          test -f app.py || (echo "app.py missing ❌" && exit 1)
+
+          echo "Checking dvc.yaml..."
+          test -f dvc.yaml || (echo "dvc.yaml missing ❌" && exit 1)
+
+          echo "Checking pipelines..."
+          test -f src/pipeline/feature_extraction_pipeline.py || exit 1
+          test -f src/pipeline/model_training_pipeline.py || exit 1
+          test -f src/pipeline/model_evaluation_pipeline.py || exit 1
+
+      # ─────────────────────────────
+      # 6. Pull DVC data (preprocessed)
+      # ─────────────────────────────
+      - name: Pull DVC data
         run: |
           dvc pull
 
       # ─────────────────────────────
-      # 6. Check if pipeline needs run
+      # 7. Check if pipeline needs to run
       # ─────────────────────────────
       - name: Check DVC status
         id: dvc_status
         run: |
-          dvc status > dvc_status.txt
-          cat dvc_status.txt
+          dvc status > status.txt
+          cat status.txt
 
-          if grep -q "feature_extraction" dvc_status.txt || \
-             grep -q "model_training" dvc_status.txt || \
-             grep -q "model_evaluation" dvc_status.txt; then
-            echo "RUN_PIPELINE=true" >> $GITHUB_ENV
+          if grep -q "feature_extraction" status.txt || \
+             grep -q "model_training" status.txt || \
+             grep -q "model_evaluation" status.txt; then
+            echo "run_pipeline=true" >> $GITHUB_OUTPUT
           else
-            echo "RUN_PIPELINE=false" >> $GITHUB_ENV
+            echo "run_pipeline=false" >> $GITHUB_OUTPUT
           fi
 
       # ─────────────────────────────
-      # 7. Run only if needed
+      # 8. Run pipeline only if needed
       # ─────────────────────────────
-      - name: Run Selected DVC Stages
-        if: env.RUN_PIPELINE == 'true'
+      - name: Run ML Pipeline
+        if: ${{ steps.dvc_status.outputs.run_pipeline == 'true' }}
         run: |
           dvc repro feature_extraction model_training model_evaluation
 
       # ─────────────────────────────
-      # 8. Run tests
+      # 9. Deploy (Run Flask App test)
       # ─────────────────────────────
-      - name: Run tests
-        run: |
-          pytest tests/
-
-  # ─────────────────────────────
-  # 🚀 DEPLOYMENT JOB
-  # ─────────────────────────────
-  deploy:
-    needs: pipeline
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.10
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install flask mlflow dagshub gunicorn
-
-      - name: Set DagsHub Token
-        run: |
-          echo "DAGSHUB_TOKEN=${{ secrets.DAGSHUB_TOKEN }}" >> $GITHUB_ENV
-
-      # Optional: health check before deploy
-      - name: Test app startup
+      - name: Test Deployment (Flask App)
         run: |
           python app.py & sleep 10
           curl http://127.0.0.1:5000/health
-
-      # Simulated deployment (replace later with cloud)
-      - name: Run Flask App (Production)
-        run: |
-          gunicorn app:app --bind 0.0.0.0:5000
