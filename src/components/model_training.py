@@ -548,7 +548,9 @@ import joblib
 from pathlib import Path
 from dotenv import load_dotenv
 
-from sklearn.pipeline import Pipeline
+# from sklearn.pipeline import Pipeline
+from imblearn.pipeline import Pipeline 
+from imblearn.over_sampling import SMOTE
 from sklearn.preprocessing import StandardScaler, RobustScaler
 from sklearn.decomposition import PCA
 
@@ -558,10 +560,11 @@ from sklearn.metrics import (
     accuracy_score, roc_auc_score, precision_score,
     make_scorer
 )
+from sklearn.feature_selection import SelectKBest, f_classif,VarianceThreshold
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.svm import SVC
+from sklearn.svm import SVC,LinearSVC
 from sklearn.neighbors import KNeighborsClassifier
 
 
@@ -617,24 +620,30 @@ class ModelTrainer:
             "logistic_regression": (
                 Pipeline([
                     ("scaler", StandardScaler()),
-                    ("pca",    PCA(svd_solver="full")),
-                    ("model",  LogisticRegression(max_iter=3000, class_weight="balanced"))
+                    ("variance",  VarianceThreshold()),
+                    ("smote",  SMOTE(random_state=42,k_neighbors=3)),
+                    ("pca", PCA(svd_solver="full")),
+                    ("model",  LogisticRegression(max_iter=3000))
                 ]),
                 {
-                    "scaler":            [StandardScaler(), RobustScaler()],
-                    "pca__n_components": [0.90,0.95,0.99],  # None removed
+                    "scaler":            [StandardScaler(), RobustScaler() ],
+                    "variance__threshold": [0.0, 0.001, 0.01],  # new variance threshold step
+                    "pca__n_components": [0.90, 0.95, 0.99],
                     "model__C":          [0.01, 0.1, 1.0, 5.0]
                 }
             ),
 
             "random_forest": (
                 Pipeline([
-                    ("pca",   PCA(svd_solver="full")),
-                    ("model", RandomForestClassifier(class_weight="balanced", random_state=42))
+                    ("variance",  VarianceThreshold()),
+                    ("smote", SMOTE(random_state=42,k_neighbors=3)),
+                    ("pca", PCA(svd_solver="full")),
+                    ("model", RandomForestClassifier( random_state=42))
                 ]),
                 {
-                    "pca__n_components":   [0.90,0.95,0.99],  # None removed
-                    "model__n_estimators": [200, 400],
+                    "variance__threshold": [0.0, 0.001, 0.01],
+                    "pca__n_components":   [0.90, 0.95, 0.99],
+                    "model__n_estimators": [200,300, 400],
                     "model__max_depth":    [5, 10, 15]
                 }
             ),
@@ -642,14 +651,17 @@ class ModelTrainer:
             "svm": (
                 Pipeline([
                     ("scaler", StandardScaler()),
-                    ("pca",    PCA(svd_solver="full")),
-                    ("model",  SVC(probability=True,class_weight="balanced"))
+                    ("variance",  VarianceThreshold()),
+                    ("smote",  SMOTE(random_state=42,k_neighbors=3)),
+                    ("pca", PCA(svd_solver="full")),
+                    ("model",  SVC(probability=True))
                 ]),
                 {
                     "scaler":            [StandardScaler(), RobustScaler()],
-                    "pca__n_components": [0.90,0.95,0.99],  # None removed
+                    "variance__threshold": [0.0, 0.001, 0.01],
+                    "pca__n_components": [0.90, 0.95, 0.99],  # None removed
                     "model__C":          [0.1, 0.5, 1.0],
-                    "model__kernel":     ["rbf"],
+                    "model__kernel":     ["rbf","linear","poly",],
                     "model__gamma":      ["scale"]
                 }
             ),
@@ -657,12 +669,15 @@ class ModelTrainer:
             "knn": (
                 Pipeline([
                     ("scaler", StandardScaler()),
-                    ("pca",    PCA(svd_solver="full")),
+                    ("variance",  VarianceThreshold()),
+                    ("smote",  SMOTE(random_state=42,k_neighbors=3)),
+                    ("pca", PCA(svd_solver="full")),
                     ("model",  KNeighborsClassifier())
                 ]),
                 {
                     "scaler":             [StandardScaler(), RobustScaler()],
-                    "pca__n_components":  [0.90,0.95,0.99],
+                    "variance__threshold": [0.0, 0.001, 0.01],
+                    "pca__n_components":  [0.90, 0.95, 0.99],
                     "model__n_neighbors": [5, 7, 9, 11]
                 }
             )
@@ -723,6 +738,31 @@ class ModelTrainer:
                     "cv_accuracy":          grid.cv_results_["mean_test_accuracy"][idx],
                     "cv_precision":         grid.cv_results_["mean_test_precision"][idx],
                 }
+                # ---------------- PCA INTROSPECTION ----------------
+                pca_step = grid.best_estimator_.named_steps["pca"]
+                n_components_selected  = pca_step.n_components_
+                variance_explained     = float(np.sum(pca_step.explained_variance_ratio_))
+
+                mlflow.log_metric("pca_n_components_selected", n_components_selected)
+                mlflow.log_metric("pca_variance_explained",    variance_explained)
+
+                print(f"PCA selected        : {n_components_selected} components")
+                print(f"Variance explained  : {variance_explained:.4f}")
+                # ---------------- PCA SCREE PLOT ----------------  
+                import matplotlib.pyplot as plt
+
+                plt.figure(figsize=(8, 4))
+                plt.plot(np.cumsum(pca_step.explained_variance_ratio_))
+                plt.axhline(y=0.95, color='r', linestyle='--', label='95% threshold')
+                plt.xlabel("Number of Components")
+                plt.ylabel("Cumulative Variance Explained")
+                plt.title(f"PCA Scree Plot — {name}")
+                plt.legend()
+
+                scree_path = self.temp_dir / f"{name}_scree_plot.png"
+                plt.savefig(scree_path)
+                plt.close()
+                mlflow.log_artifact(str(scree_path))
 
                 # ---------------- HOLDOUT METRICS ----------------
                 best_model   = grid.best_estimator_
@@ -785,8 +825,23 @@ class ModelTrainer:
                         best_model_path = self.model_dir / "best_model.pkl"
                         joblib.dump(best_model, best_model_path)
                         print(f"New best: {best_model_name} (holdout_accuracy={best_global_score:.4f})")
+                        variance_step = best_model.named_steps["variance"]
+
+                        train_df = pd.read_csv(self.feature_dir / "train_features.csv")
+                        original_features = train_df.drop("label", axis=1).columns
+
+                        selected_mask = variance_step.get_support()
+                        selected_features = original_features[selected_mask]
+
+                        joblib.dump(
+                            selected_features.tolist(),
+                            self.model_dir / "selected_features.pkl"
+                        )
+
+                        print(f"Selected features saved: {len(selected_features)}")
                     else:
                         print(f"Skipped {name}: overfit gap {gap:.4f} exceeds 0.10")
+
 
         # ---------------- COMPARISON TABLE ----------------
         results_df = pd.DataFrame(results_summary).sort_values(

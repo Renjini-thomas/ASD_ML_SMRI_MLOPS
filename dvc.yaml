@@ -5,8 +5,6 @@ stages:
       - src/pipeline/data_ingestion_pipeline.py
       - src/components/data_ingestion.py
       - config.yaml
-    # outs:
-    #   - artifacts/data_ingestion
       
 
   preprocessing:

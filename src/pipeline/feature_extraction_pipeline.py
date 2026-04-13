@@ -38,7 +38,7 @@ class FeatureExtractionPipeline:
                 mlflow.log_param("glcm_features", 7)
                 mlflow.log_param("lbp_features", 256)
                 mlflow.log_param("gfcc_features",6)
-                #mlflow.log_param("feature_extractor", "DenseNet121 RadImageNet")
+                # mlflow.log_param("feature_extractor", "DenseNet121 RadImageNet")
                 # mlflow.log_param("feature_extractor", "DenseNet121 RadImageNet+GLCM+LBP+GFCC")
                 # mlflow.log_param("pretrained", True)
 

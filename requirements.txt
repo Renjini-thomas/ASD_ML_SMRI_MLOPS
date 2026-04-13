@@ -20,3 +20,5 @@ keras
 torch
 torchvision
 flask
+shap
+imbalanced-learn
