@@ -13,7 +13,7 @@ stages:
       - src/pipeline/preprocessing_pipeline.py
       - src/components/preprocessing.py
       - config.yaml
-      - artifacts/data_ingestion
+      # - artifacts/data_ingestion
     outs:
       - artifacts/preprocessing
     

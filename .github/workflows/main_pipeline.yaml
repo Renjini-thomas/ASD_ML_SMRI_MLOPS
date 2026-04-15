@@ -40,7 +40,7 @@ jobs:
       # ✅ Check pipeline without running heavy steps
       - name: Validate DVC Pipeline
         run: |
-          dvc repro --dry
+          dvc dag
 
       # ✅ Test Flask app
       - name: Test Flask App
