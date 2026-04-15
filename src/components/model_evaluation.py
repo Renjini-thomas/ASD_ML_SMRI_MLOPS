@@ -600,6 +600,39 @@ class ModelEvaluator:
         with mlflow.start_run(run_name="evaluation_stage") as eval_run:
 
             mlflow.log_param("source_run_id", run_id)
+            # ---------------- DRIFT DETECTION ----------------
+            print("\n--- Drift Detection ---")
+
+            train_df = pd.read_csv(self.feature_dir / "train_features.csv")
+            test_df  = pd.read_csv(self.feature_dir / "test_features.csv")
+
+            train_features = train_df.drop("label", axis=1)
+            test_features  = test_df.drop("label", axis=1)
+
+            # ---------- PCA DRIFT ----------
+            pipeline_without_model = Pipeline(model.steps[:-1])
+
+            X_train_transformed = pipeline_without_model.transform(train_features.values)
+            X_test_transformed  = pipeline_without_model.transform(test_features.values)
+
+            pca_drift = np.abs(
+                X_train_transformed.mean(axis=0) - X_test_transformed.mean(axis=0)
+            ).mean()
+
+            print(f"PCA Drift Score  : {pca_drift:.4f}")
+            mlflow.log_metric("pca_drift", pca_drift)
+
+            # ---------- DRIFT DECISION ----------
+            DRIFT_THRESHOLD = 0.15
+            is_drift = False
+
+            if pca_drift > DRIFT_THRESHOLD:
+                print("⚠️ Drift detected!")
+                is_drift = True
+                mlflow.log_param("drift_status", "high")
+            else:
+                print("✅ No significant drift")
+                mlflow.log_param("drift_status", "low")
             mlflow.log_param(
                 "model_type",
                 model.named_steps["model"].__class__.__name__
@@ -638,7 +671,7 @@ class ModelEvaluator:
                 for k, v in eval_metrics.items():
                     mlflow.log_metric(k, v)
                 print(f"\nTest metrics: {eval_metrics}")
-                mlflow.log_metric("holdout_test_gap", gap)
+                
                 
                 mlflow.log_param("overfit_status", "overfit" if is_overfit else "ok")
 

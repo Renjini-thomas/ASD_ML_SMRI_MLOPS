@@ -22,9 +22,9 @@ class FeatureExtractor:
         image = image.astype(np.uint8)
 
         glcm = graycomatrix(
-            image,
-            distances=[1],
-            angles=[0],
+            image=image,
+            distances=[1,2,3],
+            angles=[0, np.pi/4, np.pi/2, 3*np.pi/4],
             levels=256,
             symmetric=True,
             normed=True
@@ -32,10 +32,10 @@ class FeatureExtractor:
 
         features = {}
 
-        features["glcm_contrast"] = graycoprops(glcm, 'contrast')[0, 0]
-        features["glcm_correlation"] = graycoprops(glcm, 'correlation')[0, 0]
-        features["glcm_energy"] = graycoprops(glcm, 'energy')[0, 0]
-        features["glcm_homogeneity"] = graycoprops(glcm, 'homogeneity')[0, 0]
+        features["glcm_contrast"] = graycoprops(glcm, 'contrast').mean()
+        features["glcm_correlation"] = graycoprops(glcm, 'correlation').mean()
+        features["glcm_energy"] = graycoprops(glcm, 'energy').mean()
+        features["glcm_homogeneity"] = graycoprops(glcm, 'homogeneity').mean()
 
         # additional stats
         features["glcm_mean"] = np.mean(glcm)
