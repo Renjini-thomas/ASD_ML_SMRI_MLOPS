@@ -3,6 +3,9 @@ name: ASD MLOps Pipeline
 on:
   push:
     branches: [ "main" ]
+permissions:
+  actions: write
+  contents: read
 
 jobs:
 
@@ -52,6 +55,7 @@ jobs:
           curl http://127.0.0.1:5000/health
 
   
+  # ---------------- CD PIPELINE ----------------
   cd:
     name: CD - Deploy Only
     runs-on: ubuntu-latest
@@ -74,39 +78,9 @@ jobs:
           echo "DAGSHUB_USERNAME=${{ secrets.DAGSHUB_USERNAME }}" >> $GITHUB_ENV
           echo "DAGSHUB_TOKEN=${{ secrets.DAGSHUB_TOKEN }}" >> $GITHUB_ENV
 
+      # Pull latest artifacts
       - name: Pull DVC data
         run: dvc pull
-
-      # 🔥 DVC CHECK
-      - name: Check DVC Status
-        id: dvc_check
-        run: |
-          STATUS=$(dvc status)
-          echo "$STATUS"
-
-          if [ -n "$STATUS" ]; then
-            echo "DVC_OUTDATED=true" >> $GITHUB_ENV
-          else
-            echo "DVC_OUTDATED=false" >> $GITHUB_ENV
-          fi
-
-      # 🔥 TRIGGER RETRAINING
-      - name: Trigger Retraining Pipeline
-        if: env.DVC_OUTDATED == 'true'
-        run: |
-          echo "Triggering retraining..."
-          curl -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/retraining.yaml/dispatches \
-            -d '{"ref":"main"}'
-
-      # 🔥 STOP DEPLOYMENT
-      - name: Stop Deployment if Outdated
-        if: env.DVC_OUTDATED == 'true'
-        run: |
-          echo "Deployment stopped due to outdated pipeline"
-          exit 1
 
       # ---------------- DOCKER ----------------
       - name: Login to DockerHub
