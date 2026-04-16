@@ -57,13 +57,13 @@ def load_model():
 # ─────────────────────────────────────────
 def extract_glcm(image: np.ndarray) -> dict:
     image = image.astype(np.uint8)
-    glcm = graycomatrix(image, distances=[1], angles=[0],
+    glcm = graycomatrix(image, distances=[1,2,3], angles=[0, np.pi/4, np.pi/2, 3*np.pi/4],
                         levels=256, symmetric=True, normed=True)
     features = {
-        "glcm_contrast":     graycoprops(glcm, "contrast")[0, 0],
-        "glcm_correlation":  graycoprops(glcm, "correlation")[0, 0],
-        "glcm_energy":       graycoprops(glcm, "energy")[0, 0],
-        "glcm_homogeneity":  graycoprops(glcm, "homogeneity")[0, 0],
+        "glcm_contrast":     graycoprops(glcm, "contrast").mean(),
+        "glcm_correlation":  graycoprops(glcm, "correlation").mean(),
+        "glcm_energy":       graycoprops(glcm, "energy").mean(),
+        "glcm_homogeneity":  graycoprops(glcm, "homogeneity").mean(),
         "glcm_mean":         np.mean(glcm),
         "glcm_variance":     np.var(glcm),
         "glcm_entropy":      -np.sum(glcm * np.log2(glcm + 1e-10)),
@@ -179,11 +179,20 @@ def allowed_file(filename: str) -> bool:
 # LOAD MODEL AT STARTUP
 # ─────────────────────────────────────────
 model = None
+last_version = None
 
 def get_model():
-    global model
-    if model is None:
+    global model, last_version
+
+    client = mlflow.tracking.MlflowClient()
+    version = client.get_model_version_by_alias(
+        MODEL_NAME, MODEL_ALIAS
+    ).version
+
+    if model is None or version != last_version:
         model = load_model()
+        last_version = version
+
     return model
 
 
