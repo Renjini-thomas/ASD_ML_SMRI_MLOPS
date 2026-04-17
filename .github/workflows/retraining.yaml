@@ -3,7 +3,7 @@ name: ASD Retraining Pipeline
 on:
   workflow_dispatch:   # manual trigger
   schedule:
-    - cron: "0 2 * * 0"   # every Sunday 2 AM
+    - cron: "0 10 * * 6"   # every Saturday 10 AM
 
 jobs:
   retrain:
