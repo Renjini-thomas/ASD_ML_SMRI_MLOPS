@@ -3,6 +3,8 @@ name: ASD MLOps Pipeline
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - 'README.md'
 permissions:
   actions: write
   contents: read
@@ -78,9 +80,9 @@ jobs:
           echo "DAGSHUB_USERNAME=${{ secrets.DAGSHUB_USERNAME }}" >> $GITHUB_ENV
           echo "DAGSHUB_TOKEN=${{ secrets.DAGSHUB_TOKEN }}" >> $GITHUB_ENV
 
-      # Pull latest artifacts
-      - name: Pull DVC data
-        run: dvc pull
+      # # Pull latest artifacts
+      # - name: Pull DVC data
+      #   run: dvc pull
 
       # ---------------- DOCKER ----------------
       - name: Login to DockerHub
