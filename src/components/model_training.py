@@ -566,7 +566,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC,LinearSVC
 from sklearn.neighbors import KNeighborsClassifier
-from xgboost import XGBClassifier
+
 
 
 class ModelTrainer:
@@ -682,8 +682,6 @@ class ModelTrainer:
                     "model__n_neighbors": [5, 7, 9, 11]
                 }
             ),
-
-            
 
         }
 
