@@ -566,6 +566,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC,LinearSVC
 from sklearn.neighbors import KNeighborsClassifier
+from xgboost import XGBClassifier
 
 
 class ModelTrainer:
@@ -620,67 +621,70 @@ class ModelTrainer:
             "logistic_regression": (
                 Pipeline([
                     ("scaler", StandardScaler()),
-                    ("variance",  VarianceThreshold()),
-                    ("smote",  SMOTE(random_state=42,k_neighbors=3)),
+                    ("variance", VarianceThreshold()),
+                    ("smote", SMOTE(random_state=42, k_neighbors=3)),
                     ("pca", PCA(svd_solver="full")),
-                    ("model",  LogisticRegression(max_iter=3000))
+                    ("model", LogisticRegression(max_iter=3000))
                 ]),
                 {
-                    "scaler":            [StandardScaler(), RobustScaler() ],
-                    "variance__threshold": [0.0, 0.001, 0.01],  # new variance threshold step
+                    "scaler": [StandardScaler(), RobustScaler()],
+                    "variance__threshold": [0.0, 0.001, 0.01],
                     "pca__n_components": [0.90, 0.95, 0.99],
-                    "model__C":          [0.01, 0.1, 1.0, 5.0]
+                    "model__C": [0.01, 0.1, 1.0, 5.0]
                 }
             ),
 
             "random_forest": (
                 Pipeline([
-                    ("variance",  VarianceThreshold()),
-                    ("smote", SMOTE(random_state=42,k_neighbors=3)),
+                    ("variance", VarianceThreshold()),
+                    ("smote", SMOTE(random_state=42, k_neighbors=3)),
                     ("pca", PCA(svd_solver="full")),
-                    ("model", RandomForestClassifier( random_state=42))
+                    ("model", RandomForestClassifier(random_state=42))
                 ]),
                 {
                     "variance__threshold": [0.0, 0.001, 0.01],
-                    "pca__n_components":   [0.90, 0.95, 0.99],
-                    "model__n_estimators": [200,300, 400],
-                    "model__max_depth":    [5, 10, 15]
+                    "pca__n_components": [0.90, 0.95, 0.99],
+                    "model__n_estimators": [200, 300, 400],
+                    "model__max_depth": [5, 10, 15]
                 }
             ),
 
             "svm": (
                 Pipeline([
                     ("scaler", StandardScaler()),
-                    ("variance",  VarianceThreshold()),
-                    ("smote",  SMOTE(random_state=42,k_neighbors=3)),
+                    ("variance", VarianceThreshold()),
+                    ("smote", SMOTE(random_state=42, k_neighbors=3)),
                     ("pca", PCA(svd_solver="full")),
-                    ("model",  SVC(probability=True))
+                    ("model", SVC(probability=True))
                 ]),
                 {
-                    "scaler":            [StandardScaler(), RobustScaler()],
+                    "scaler": [StandardScaler(), RobustScaler()],
                     "variance__threshold": [0.0, 0.001, 0.01],
-                    "pca__n_components": [0.90, 0.95, 0.99],  # None removed
-                    "model__C":          [0.1, 0.5, 1.0],
-                    "model__kernel":     ["rbf","linear","poly",],
-                    "model__gamma":      ["scale"]
+                    "pca__n_components": [0.90, 0.95, 0.99],
+                    "model__C": [0.1, 0.5, 1.0],
+                    "model__kernel": ["rbf", "linear", "poly"],
+                    "model__gamma": ["scale"]
                 }
             ),
 
             "knn": (
                 Pipeline([
                     ("scaler", StandardScaler()),
-                    ("variance",  VarianceThreshold()),
-                    ("smote",  SMOTE(random_state=42,k_neighbors=3)),
+                    ("variance", VarianceThreshold()),
+                    ("smote", SMOTE(random_state=42, k_neighbors=3)),
                     ("pca", PCA(svd_solver="full")),
-                    ("model",  KNeighborsClassifier())
+                    ("model", KNeighborsClassifier())
                 ]),
                 {
-                    "scaler":             [StandardScaler(), RobustScaler()],
+                    "scaler": [StandardScaler(), RobustScaler()],
                     "variance__threshold": [0.0, 0.001, 0.01],
-                    "pca__n_components":  [0.90, 0.95, 0.99],
+                    "pca__n_components": [0.90, 0.95, 0.99],
                     "model__n_neighbors": [5, 7, 9, 11]
                 }
-            )
+            ),
+
+            
+
         }
 
     def run(self):

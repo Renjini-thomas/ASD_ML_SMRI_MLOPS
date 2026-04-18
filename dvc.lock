@@ -73,8 +73,8 @@ stages:
       nfiles: 3
     - path: src/components/model_training.py
       hash: md5
-      md5: 34c4b862420df9c2459c5545e3ecaf83
-      size: 37899
+      md5: be4b729dd79f27753604a3a0a48cd6fe
+      size: 38752
     - path: src/pipeline/model_training_pipeline.py
       hash: md5
       md5: f9e9b8bc0b1049f75a1e35ec7e610182
@@ -82,7 +82,7 @@ stages:
     outs:
     - path: artifacts/models/best_model.pkl
       hash: md5
-      md5: 390ba6fc05358fcff2283aab37ab252e
+      md5: 05825384e084d1abc1d0d29b7949520e
       size: 3333161
   model_evaluation:
     cmd: python -m src.pipeline.model_evaluation_pipeline
@@ -93,12 +93,12 @@ stages:
       size: 266950
     - path: artifacts/models/best_model.pkl
       hash: md5
-      md5: 390ba6fc05358fcff2283aab37ab252e
+      md5: 05825384e084d1abc1d0d29b7949520e
       size: 3333161
     - path: src/components/model_evaluation.py
       hash: md5
-      md5: a6c53b910b877904517f96bd6e3373e1
-      size: 36208
+      md5: 2e34bd0bfd9d55f1a1c2616932330735
+      size: 39669
     - path: src/pipeline/model_evaluation_pipeline.py
       hash: md5
       md5: 5b0a1b221e7851588fdcd93381ead581

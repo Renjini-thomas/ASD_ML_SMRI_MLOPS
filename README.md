@@ -145,7 +145,7 @@ ASD_ML_SMRI_MLOPS/
 └── .github/
     └── workflows/
         ├── main_pipeline.yaml      # CI/CD: runs on push to main
-        └── retraining.yaml         # Scheduled retraining (Sundays 2 AM)
+        └── retraining.yaml         # Scheduled retraining (Saturday 2 AM)
 ```
 
 ---
@@ -440,7 +440,7 @@ Triggered on every push to the `main` branch.
 
 Triggered:
 - **Manually** via `workflow_dispatch`.
-- **Automatically every Sunday at 2:00 AM UTC** via cron schedule.
+- **Automatically every saturday at 10:00 AM UTC** via cron schedule.
 
 Steps:
 1. Pull the latest DVC-tracked data (`dvc pull`).

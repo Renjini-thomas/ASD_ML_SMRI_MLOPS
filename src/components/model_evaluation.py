@@ -723,163 +723,258 @@ class ModelEvaluator:
             best_model_step = model.named_steps["model"]
             model_type      = best_model_step.__class__.__name__
 
-            # Transform test data through all steps except final model
-            pipeline_without_model = Pipeline(model.steps[:-1])
-            X_transformed          = pipeline_without_model.transform(X_test)
-
-            pca_step      = model.named_steps["pca"]
-            n_components  = pca_step.n_components_
-            feature_names = [f"PC{i+1}" for i in range(n_components)]
-
             try:
+                print("\n--- SHAP Analysis Started ---")
+
+                # =====================================================
+                # 1. TRANSFORM TEST DATA THROUGH FULL PREPROCESS PIPELINE
+                # =====================================================
+                pipeline_without_model = Pipeline(model.steps[:-1])
+                X_transformed = pipeline_without_model.transform(X_test)
+
+                # PCA step
+                pca_step = model.named_steps["pca"]
+                n_components = pca_step.n_components_
+                feature_names = [f"PC{i+1}" for i in range(n_components)]
+
+                # =====================================================
+                # 2. COMPUTE SHAP VALUES ON PCA COMPONENTS
+                # =====================================================
                 if model_type == "RandomForestClassifier":
-                    explainer   = shap.TreeExplainer(best_model_step)
+                    explainer = shap.TreeExplainer(best_model_step)
                     shap_values = explainer.shap_values(X_transformed)
+
                 else:
-                    background  = shap.sample(
+                    background = shap.sample(
                         X_transformed,
                         min(50, len(X_transformed)),
                         random_state=42
                     )
-                    explainer   = shap.KernelExplainer(
-                        best_model_step.predict_proba, background
+
+                    explainer = shap.KernelExplainer(
+                        best_model_step.predict_proba,
+                        background
                     )
+
                     shap_values = explainer.shap_values(
                         X_transformed,
                         nsamples=100
                     )
 
                 shap_asd = self.extract_shap_class1(shap_values)
-                print(f"\nSHAP values shape : {shap_asd.shape}")
 
-                # ---------------- PCA LEVEL SHAP ----------------
-                plt.figure()
+                print("SHAP PCA shape :", shap_asd.shape)
+
+                # =====================================================
+                # 3. PCA COMPONENT SHAP BAR PLOT
+                # =====================================================
+                plt.figure(figsize=(10, 6))
+
                 shap.summary_plot(
                     shap_asd,
                     X_transformed,
                     feature_names=feature_names,
                     plot_type="bar",
-                    show=False,
-                    max_display=15
+                    max_display=15,
+                    show=False
                 )
-                plt.title(f"SHAP Feature Importance — {model_type} — Test Set")
+
+                plt.title(f"SHAP Feature Importance (PCA) — {model_type}")
                 plt.tight_layout()
 
                 shap_bar_path = self.eval_dir / "shap_summary_bar.png"
                 plt.savefig(shap_bar_path, dpi=300, bbox_inches="tight")
                 plt.close()
+
                 mlflow.log_artifact(str(shap_bar_path))
 
-                plt.figure()
+                # =====================================================
+                # 4. PCA COMPONENT SHAP DOT PLOT
+                # =====================================================
+                plt.figure(figsize=(10, 6))
+
                 shap.summary_plot(
                     shap_asd,
                     X_transformed,
                     feature_names=feature_names,
                     plot_type="dot",
-                    show=False,
-                    max_display=15
+                    max_display=15,
+                    show=False
                 )
-                plt.title(f"SHAP Dot Plot — {model_type} — Test Set")
+
+                plt.title(f"SHAP Summary Dot Plot (PCA) — {model_type}")
                 plt.tight_layout()
 
                 shap_dot_path = self.eval_dir / "shap_summary_dot.png"
                 plt.savefig(shap_dot_path, dpi=300, bbox_inches="tight")
                 plt.close()
+
                 mlflow.log_artifact(str(shap_dot_path))
 
+                # =====================================================
+                # 5. SAVE RAW SHAP VALUES
+                # =====================================================
                 shap_array_path = self.eval_dir / "shap_values.npy"
                 np.save(str(shap_array_path), shap_asd)
                 mlflow.log_artifact(str(shap_array_path))
 
-                mean_shap     = np.abs(shap_asd).mean(axis=0)
+                mean_shap = np.abs(shap_asd).mean(axis=0)
                 top_component = feature_names[np.argmax(mean_shap)]
+
                 mlflow.log_param("top_shap_component", top_component)
 
-                print(f"SHAP computed on test set")
-                print(f"Top contributing component : {top_component}")
+                print("Top PCA component :", top_component)
 
-                # ---------------- SHAP → ORIGINAL FEATURE MAPPING ----------------
-                pca_components   = pca_step.components_
-                mean_shap_per_pc = np.abs(shap_asd).mean(axis=0)
+                # =====================================================
+                # 6. BACK PROJECT SHAP TO ORIGINAL FEATURES
+                # =====================================================
+                pca_components = pca_step.components_        # (pc, feature)
+                shap_original = np.dot(shap_asd, pca_components)
 
-                n_original          = pca_components.shape[1]
-                original_importance = np.abs(
-                    mean_shap_per_pc @ np.abs(pca_components)
+                # =====================================================
+                # 7. GET TRUE FEATURE NAMES AFTER VARIANCE THRESHOLD
+                # =====================================================
+                selected_features = joblib.load(
+                    "artifacts/models/selected_features.pkl"
                 )
 
-                selected_features = joblib.load("artifacts/models/selected_features.pkl")
-                original_features = selected_features
+                # variance_mask = model.named_steps["variance"].get_support()
 
-                if len(original_features) != n_original:
-                    original_features = [f"feature_{i}" for i in range(n_original)]
+                original_features = np.array(selected_features)
 
-                # ---------------- INDIVIDUAL FEATURE IMPORTANCE ----------------
+                # =====================================================
+                # 8. GET DATA BEFORE PCA (scaled + variance only)
+                # =====================================================
+                pre_pca_pipeline = Pipeline([
+                    ("scaler", model.named_steps["scaler"]),
+                    ("variance", model.named_steps["variance"])
+                ])
+
+                X_before_pca = pre_pca_pipeline.transform(X_test)
+
+                print("Original SHAP shape :", shap_original.shape)
+                print("Original Data shape :", X_before_pca.shape)
+
+                # =====================================================
+                # 9. ORIGINAL FEATURE SHAP DOT PLOT
+                # =====================================================
+                plt.figure(figsize=(10, 6))
+
+                shap.summary_plot(
+                    shap_original,
+                    X_before_pca,
+                    feature_names=original_features,
+                    plot_type="dot",
+                    max_display=15,
+                    show=False
+                )
+
+                plt.title(f"SHAP Summary Dot Plot (Original Features)")
+                plt.tight_layout()
+
+                orig_dot_path = self.eval_dir / "shap_original_summary_dot.png"
+                plt.savefig(orig_dot_path, dpi=300, bbox_inches="tight")
+                plt.close()
+
+                mlflow.log_artifact(str(orig_dot_path))
+
+                # =====================================================
+                # 10. ORIGINAL FEATURE BAR PLOT
+                # =====================================================
+                plt.figure(figsize=(10, 6))
+
+                shap.summary_plot(
+                    shap_original,
+                    X_before_pca,
+                    feature_names=original_features,
+                    plot_type="bar",
+                    max_display=15,
+                    show=False
+                )
+
+                plt.title("SHAP Feature Importance (Original Features)")
+                plt.tight_layout()
+
+                orig_bar_path = self.eval_dir / "shap_original_summary_bar.png"
+                plt.savefig(orig_bar_path, dpi=300, bbox_inches="tight")
+                plt.close()
+
+                mlflow.log_artifact(str(orig_bar_path))
+
+                # =====================================================
+                # 11. FEATURE IMPORTANCE TABLE
+                # =====================================================
+                original_importance = np.abs(shap_original).mean(axis=0)
+
                 original_importance_df = pd.DataFrame({
                     "feature": original_features,
                     "importance": original_importance
                 }).sort_values("importance", ascending=False)
 
-                print("\n--- Top 15 Original Features ---")
+                print("\nTop 15 Original Features")
                 print(original_importance_df.head(15).to_string(index=False))
 
-                orig_imp_path = self.eval_dir / "shap_original_feature_importance.csv"
-                original_importance_df.to_csv(orig_imp_path, index=False)
-                mlflow.log_artifact(str(orig_imp_path))
+                orig_csv = self.eval_dir / "shap_original_feature_importance.csv"
+                original_importance_df.to_csv(orig_csv, index=False)
+                mlflow.log_artifact(str(orig_csv))
 
-                plt.figure(figsize=(10, 6))
-                top15 = original_importance_df.head(15)
-                plt.barh(top15["feature"][::-1], top15["importance"][::-1])
-                plt.title("Top 15 Original Features")
-                plt.tight_layout()
-
-                orig_plot = self.eval_dir / "shap_original_feature_importance.png"
-                plt.savefig(orig_plot)
-                plt.close()
-                mlflow.log_artifact(str(orig_plot))
-
-                for idx, row in enumerate(original_importance_df.head(3).itertuples(), start=1):
-                    mlflow.log_param(f"top_feature_{idx}", row.feature)
-
-                # ---------------- GROUPED FEATURE IMPORTANCE ----------------
+                # =====================================================
+                # 12. GROUPED FEATURE IMPORTANCE
+                # =====================================================
                 feature_groups = {
                     "LBP": ["lbp"],
                     "GLCM": ["glcm"],
-                    "GFCC": ["gfcc"],
+                    "GFCC": ["gfcc"]
                 }
 
                 group_importance = {}
 
                 for group, keywords in feature_groups.items():
+
                     mask = original_importance_df["feature"].str.lower().apply(
                         lambda x: any(k in x for k in keywords)
                     )
-                    group_importance[group] = original_importance_df.loc[mask, "importance"].sum()
 
-                group_importance_df = pd.DataFrame(
+                    group_importance[group] = original_importance_df.loc[
+                        mask, "importance"
+                    ].sum()
+
+                group_df = pd.DataFrame(
                     list(group_importance.items()),
                     columns=["group", "importance"]
                 ).sort_values("importance", ascending=False)
 
-                print("\n--- SHAP Grouped Importance ---")
-                print(group_importance_df.to_string(index=False))
+                print("\nGrouped Importance")
+                print(group_df.to_string(index=False))
 
-                group_path = self.eval_dir / "shap_group_importance.csv"
-                group_importance_df.to_csv(group_path, index=False)
-                mlflow.log_artifact(str(group_path))
+                group_csv = self.eval_dir / "shap_group_importance.csv"
+                group_df.to_csv(group_csv, index=False)
+                mlflow.log_artifact(str(group_csv))
 
+                # =====================================================
+                # 13. GROUP PLOT
+                # =====================================================
                 plt.figure(figsize=(6, 4))
-                plt.barh(group_importance_df["group"][::-1],
-                        group_importance_df["importance"][::-1])
+
+                plt.barh(
+                    group_df["group"][::-1],
+                    group_df["importance"][::-1]
+                )
+
                 plt.title("Feature Group Contribution")
                 plt.tight_layout()
 
                 group_plot = self.eval_dir / "shap_group_importance.png"
-                plt.savefig(group_plot)
+                plt.savefig(group_plot, dpi=300, bbox_inches="tight")
                 plt.close()
+
                 mlflow.log_artifact(str(group_plot))
 
-                top_group = group_importance_df.iloc[0]["group"]
+                top_group = group_df.iloc[0]["group"]
                 mlflow.log_param("top_feature_group", top_group)
+
+                print("Top Group :", top_group)
+                print("SHAP Analysis Completed Successfully")
 
             except Exception as e:
                 print(f"\nSHAP computation failed: {e}")
